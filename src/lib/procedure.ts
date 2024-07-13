@@ -12,7 +12,7 @@ export const procedure = <M extends Middleware[], Params extends Record<string, 
 	};
 	const handler =
 		<S extends Schema | undefined>(schema?: S) =>
-		<H extends HandleFunction<S, M, Params>>(handler: H): PreparedHandler<S, M, Params, H> => {
+		<H extends HandleFunction<S, M>>(handler: H): PreparedHandler<S, M, H> => {
 			return {
 				parse: (data: any) => {
 					if (schema === undefined) {
@@ -27,8 +27,8 @@ export const procedure = <M extends Middleware[], Params extends Record<string, 
 						return parseResult.data || parseResult.output;
 					}
 				},
-				call: async (event: RequestEvent, input: S extends Schema ? SchemaInput<S> : undefined, params: Params): Promise<ReturnType<H>> => {
-					return handler({ event, input, ctx: await useMiddlewares(event), params } as any);
+				call: async (event: RequestEvent, input: S extends Schema ? SchemaInput<S> : undefined): Promise<ReturnType<H>> => {
+					return handler({ event, input, ctx: await useMiddlewares(event) } as any);
 				},
 			};
 		};

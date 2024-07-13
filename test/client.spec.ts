@@ -122,15 +122,17 @@ const api = createClient<AppRouter>({
 // });
 
 it('Send a request to a path parametrized endpoint and receive a response', async () => {
-	// const result = await api.test.update({
-	// 	name: 'world',
-	// });
+	const result1 = await api.test.boolean;
 
 	const result = await api.parametrized.id('test').update({
 		name: 'world',
 	});
 
-	console.log('result', { result });
+	const result2 = await api.parametrized2.id('test').update({
+		name: 'world',
+	});
+
+	console.log('result', { result, result2 });
 
 	expect({
 		name: 'world',

@@ -15,6 +15,7 @@ export type Locals = Register extends {
 }
 	? _Locals
 	: {};
+
 export type RegisteredRouter = Register extends {
 	Router: infer _Router;
 }
@@ -46,17 +47,13 @@ export type RequestEvent = {
 } & Env &
 	(Locals extends never ? {} : { locals: Locals });
 
-export type HandleFunction<
-	S extends Schema | undefined,
-	M extends Middleware[] | undefined,
-	Params extends Record<string, string> | undefined = Record<string, string>,
-> = (payload: HandlePayload<S, M, Params>) => MaybePromise<any>;
+export type HandleFunction<S extends Schema | undefined, M extends Middleware[] | undefined> = (
+	payload: HandlePayload<S, M>,
+) => MaybePromise<any>;
 
-export type HandlePayload<
-	S extends Schema | undefined,
-	M extends Middleware[] | undefined,
-	Params extends Record<string, string> | undefined = Record<string, string>,
-> = (S extends Schema ? { event: RequestEvent; input: SchemaInput<S>; params: Params } : { event: RequestEvent; params: Params }) & {
+export type HandlePayload<S extends Schema | undefined, M extends Middleware[] | undefined> = (S extends Schema
+	? { event: RequestEvent; input: SchemaInput<S> }
+	: { event: RequestEvent }) & {
 	ctx: ReturnOfMiddlewares<M>;
 };
 
@@ -70,30 +67,27 @@ export type ReturnOfMiddlewares<Use extends Middleware[] | undefined, PreviousDa
 		: unknown
 	: unknown;
 
-type AnyHandler = {
-	call: (event: any, input: any, params?: any) => MaybePromise<any>;
+type AnyHandler<Path extends string = never> = {
+	call: (event: any, input: any, params: Path) => MaybePromise<any>;
 	parse: (data: any) => MaybePromise<any>;
 };
 
-export type Router<Params extends Record<string, string> | undefined = undefined> = {
-	[K: string]: AnyHandler | Router;
+export type Router<Path extends string = never> = {
+	[K: string]: AnyHandler<Path> | Router<Path>;
 };
 
-
-export type RouteWithPath
+// type Path = <P>(path:string, router: Router<>) => Router<T>;
+export type ParametrizedRouter<P extends string, R extends Router<P>> = R;
 
 type IsParametrizedPath<P> = P extends `[${infer Path}]` ? true : false;
 type NonParameterizedPath<P> = P extends `[${infer Path}]` ? Path : P;
 type WithParametrized<K> = K extends string ? `[${K}]` : K;
 
-export type API<
-	R extends Router = Router,
-	Params extends Record<string, string> | undefined = Record<string, string>,
-> = APIWithoutParametrized<{
+export type API<R extends Router = Router> = APIWithoutParametrized<{
 	[K in keyof R]: R[K] extends Router
 		? IsParametrizedPath<K> extends true
-			? (param: string) => API<R[K], Params extends undefined ? Record<K, string> : Params & Record<K, string>>
-			: API<R[K], Params>
+			? (param: string) => API<R[K]>
+			: API<R[K]>
 		: R[K] extends AnyHandler
 			? PreparedHandlerType<R[K]>
 			: never;
@@ -103,18 +97,17 @@ export type APIWithoutParametrized<O> = {
 	[K in NonParameterizedPath<keyof O>]: WithParametrized<K> extends keyof O ? O[WithParametrized<K>] : K extends keyof O ? O[K] : never;
 };
 
-export type PreparedHandler<
-	S extends Schema | undefined,
-	M extends Middleware[],
-	Params extends Record<string, string> | undefined,
-	H extends HandleFunction<S, M, Params>,
-> = {
+export type PreparedHandler<S extends Schema | undefined, M extends Middleware[], H extends HandleFunction<S, M>> = {
 	parse: (data: any) => Promise<S extends Schema ? SchemaInput<S> : undefined>;
-	call: (event: RequestEvent, input: S extends Schema ? SchemaInput<S> : undefined, params: Params) => Promise<ReturnType<H>>;
+	call: (event: RequestEvent, input: S extends Schema ? SchemaInput<S> : undefined) => Promise<ReturnType<H>>;
 };
 
-export type PreparedHandlerType<H extends AnyHandler = AnyHandler> = H['call'] extends (...args: infer U) => MaybePromise<any>
-	? APICaller<H['call'], U[1]>
+export type PreparedHandlerType<H extends AnyHandler = AnyHandler> = H['call'] extends (
+	event: infer E,
+	input: infer I,
+	params: infer P,
+) => MaybePromise<any>
+	? APICaller<H['call'], I>
 	: never;
 
 type APICaller<C extends AnyHandler['call'], I> =

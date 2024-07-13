@@ -32,8 +32,7 @@ const locals = {
 type Locals = typeof locals;
 
 export class MyService extends WorkerEntrypoint {
-	sum = (a, b) => {
-		this.ctx.storage;
+	sum = (a: number, b: number) => {
 		return a + b;
 	};
 }
@@ -45,7 +44,24 @@ declare module 'cf-rpc' {
 		Locals: Locals;
 	}
 }
+
+type WithParametrized<K> = K extends string ? `[${K}]` : K;
+const path = <const Path extends string, R extends Router<Path>>(path: Path, router: R): Record<WithParametrized<Path>, R> => {
+	return {
+		[`[${path}]`]: router,
+	} as Record<WithParametrized<Path>, R>;
+};
+
 const router = {
+	parametrized2: path('id', {
+		update: procedure()
+			.input(object({ name: string() }))
+			.handle(async ({ input, event, ctx }) => {
+				return {
+					name: input.name,
+				};
+			}),
+	}),
 	user: {
 		get: procedure()
 			.input(object({ name: string(), map: map(string(), string()) }))
@@ -176,22 +192,13 @@ const router = {
 		'[id]': {
 			update: procedure()
 				.input(object({ name: string() }))
-				.handle(async ({ input, event, ctx, params }) => {
+				.handle(async ({ input, event, ctx }) => {
 					return {
 						name: input.name,
 					};
 				}),
 		},
 	},
-	parametrized2: path('id', {
-		update: procedure()
-			.input(object({ name: string() }))
-			.handle(async ({ input, event, ctx, params }) => {
-				return {
-					name: input.name,
-				};
-			}),
-	}),
 } satisfies Router;
 
 export type AppRouter = typeof router;
@@ -200,7 +207,3 @@ export default createRouter({
 	router,
 	locals,
 });
-
-const path = <Path extends string, R extends Router<Path>>(path: Path, router: R) => {
-	return router as APIWithoutParametrized<R>;
-};
