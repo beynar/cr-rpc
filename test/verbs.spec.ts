@@ -4,7 +4,7 @@ import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:
 import { createClient } from '../src/lib/client';
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
-async function f(this, _endpoint: any, body: any) {
+async function f(this: { method: string }, _endpoint: any, body: any) {
 	const request = new IncomingRequest(_endpoint, body);
 	const ctx = createExecutionContext();
 	await waitOnExecutionContext(ctx);
@@ -13,7 +13,7 @@ async function f(this, _endpoint: any, body: any) {
 	return res;
 }
 
-it('Should use the right http verb', async () => {
+it('Should use GET method', async () => {
 	let THIS = { method: 'any' };
 	const api = createClient<AppRouter>({
 		endpoint: 'https://example.com',
@@ -26,21 +26,21 @@ it('Should use the right http verb', async () => {
 	});
 	expect(THIS.method).toBe('GET');
 });
-it('Should use the right http verb', async () => {
+it('Should use PUT method', async () => {
 	let THIS = { method: 'any' };
 	const api = createClient<AppRouter>({
 		endpoint: 'https://example.com',
 		// @ts-ignore
 		fetch: f.bind(THIS),
 	});
-	const result = await api.httpVerbs.update();
+	const result = await api.httpVerbs.put();
 	expect(result).toEqual({
 		hello: 'world',
 	});
 	console.log(THIS.method);
-	expect(THIS.method).toBe('UPDATE');
+	expect(THIS.method).toBe('PUT');
 });
-it('Should use the right http verb', async () => {
+it('Should use PATCH method', async () => {
 	let THIS = { method: 'any' };
 	const api = createClient<AppRouter>({
 		endpoint: 'https://example.com',
@@ -53,7 +53,7 @@ it('Should use the right http verb', async () => {
 	});
 	expect(THIS.method).toBe('PATCH');
 });
-it('Should use the right http verb', async () => {
+it('Should use DELETE method', async () => {
 	let THIS = { method: 'any' };
 	const api = createClient<AppRouter>({
 		endpoint: 'https://example.com',

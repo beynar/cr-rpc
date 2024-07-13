@@ -1,15 +1,41 @@
-import { PreparedHandler, RequestEvent, Router, Env, Locals, RouterPaths, RegisteredRouter } from './types';
+import { PreparedHandler, RequestEvent, Router, Env, Locals, RouterPaths, RegisteredRouter, API } from './types';
 import { createCookies } from './cookies';
 import { CorsPair } from './cors';
-import { formDataToJson, jsonToFormData, tryParse } from './utils';
+import { tryParse } from './utils';
+import { deform, form } from 'ampliform';
+import { MaybePromise } from 'valibot';
+import { createRecursiveProxy } from './client';
 
-const getHandler = (router: Router, path: string[]) => {
+const createCaller = <R extends Router>(router: R, event: Omit<RequestEvent, 'procedures'>) => {
+	return createRecursiveProxy(async ({ path, args }) => {
+		const [handler] = getHandler(router, path);
+		const parsedData = await handler.parse(args[0]);
+		return handler.call(event, parsedData);
+	}, []) as API<R>;
+};
+
+export const getHandler = (router: Router, path: string[]) => {
 	type H = Router | PreparedHandler<any, any, any> | undefined;
 	let handler: H = router;
+	let params: Record<string, string> = {};
 	path.forEach((segment) => {
-		handler = handler?.[segment as keyof typeof handler] ? (handler?.[segment as keyof typeof handler] as H) : undefined;
+		const getAtSegment = (s: keyof typeof handler) => {
+			// If handler doesn't have a property with the segment name, try to find a property that is parameterized
+			return handler?.[s]
+				? (handler?.[s] as H)
+				: Object.entries(handler as Router).find(([key]) => {
+						const match = key.match(new RegExp(`\\[(.*?)\\]`));
+						if (match) {
+							const param = match?.[1];
+							Object.assign(params, { [param]: segment });
+						}
+						return !!match;
+					})?.[1];
+		};
+
+		handler = getAtSegment(segment as keyof typeof handler);
 	});
-	return (handler ? handler : null) as any | null;
+	return [handler as any | null, params];
 };
 
 export const createRouter = <R extends Router>({
@@ -21,7 +47,7 @@ export const createRouter = <R extends Router>({
 	catch: c,
 }: {
 	router: R;
-	locals?: Locals;
+	locals?: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>);
 	before?: ((event: RequestEvent) => Response | void)[];
 	after?: ((response: Response, event: RequestEvent) => Response | void)[];
 	catch?: (error: unknown) => Response | void;
@@ -39,7 +65,7 @@ export const createRouter = <R extends Router>({
 		const event = Object.assign(
 			ctx,
 			env,
-			{ locals },
+			{ locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals },
 			{
 				request,
 				url,
@@ -67,15 +93,15 @@ export const createRouter = <R extends Router>({
 			// const verb = ['GET', 'UPDATE', 'DELETE', 'PUT', 'PATCH', 'POST'].find((v) => v === request.method);
 			// path.push(verb ? verb : lastPath);
 
-			const handler = getHandler(router, path);
+			const [handler, params] = getHandler(router, path);
 
-			console.log({ path, handler, method, isClientRequest });
 			const requestData =
 				method === 'GET'
 					? JSON.parse(decodeURIComponent(new URLSearchParams(url.search).get('input') || '{}'))
 					: isClientRequest
-						? formDataToJson(await request.formData())
+						? deform(await request.formData())
 						: await request.json();
+			console.log({ handler, requestData });
 
 			if (handler && 'call' in handler) {
 				result = await handler.call(event, handler.parse(requestData));
@@ -90,12 +116,12 @@ export const createRouter = <R extends Router>({
 				} else {
 					if (!isClientRequest) {
 						headers = {
-							'Content-Type': isClientRequest ? 'multipart/form-data; boundary="abcd"' : 'application/json',
+							'Content-Type': 'application/json',
 						};
 					} else {
 						delete headers['Content-Type'];
 					}
-					result = isClientRequest ? jsonToFormData(result, 'result') : JSON.stringify({ result });
+					result = isClientRequest ? form(result) : JSON.stringify(result);
 				}
 			}
 		} catch (error) {
@@ -113,7 +139,7 @@ export const createRouter = <R extends Router>({
 		for (let handler of after.concat(cors?.corsify || []) || []) {
 			response = handler(response!, event) || response;
 		}
-
+		console.log({ response, result });
 		return response!;
 	},
 });

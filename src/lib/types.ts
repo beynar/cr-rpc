@@ -75,8 +75,22 @@ export type Router = {
 	[K: string]: AnyHandler | Router;
 };
 
-export type API<R extends Router = Router> = {
-	[K in keyof R]: R[K] extends Router ? APIRoute<R[K]> : R[K] extends AnyHandler ? PreparedHandlerType<R[K]> : never;
+type IsParametrizedPath<P> = P extends `[${infer Path}]` ? true : false;
+type NonParameterizedPath<P> = P extends `[${infer Path}]` ? Path : P;
+type WithParametrized<K> = K extends string ? `[${K}]` : K;
+
+export type API<R extends Router = Router> = APIWithoutParametrized<{
+	[K in keyof R]: R[K] extends Router
+		? IsParametrizedPath<K> extends true
+			? (param: string) => API<R[K]>
+			: API<R[K]>
+		: R[K] extends AnyHandler
+			? PreparedHandlerType<R[K]>
+			: never;
+}>;
+
+export type APIWithoutParametrized<O> = {
+	[K in NonParameterizedPath<keyof O>]: WithParametrized<K> extends keyof O ? O[WithParametrized<K>] : K extends keyof O ? O[K] : never;
 };
 
 export type PreparedHandler<S extends Schema | undefined, M extends Middleware[], H extends HandleFunction<S, M>> = {
@@ -87,10 +101,6 @@ export type PreparedHandler<S extends Schema | undefined, M extends Middleware[]
 export type PreparedHandlerType<H extends AnyHandler = AnyHandler> = H['call'] extends (...args: infer U) => MaybePromise<any>
 	? APICaller<H['call'], U[1]>
 	: never;
-
-export type APIRoute<R extends Router> = {
-	[K in keyof R]: R[K] extends Router ? APIRoute<R[K]> : R[K] extends AnyHandler ? PreparedHandlerType<R[K]> : never;
-};
 
 type APICaller<C extends AnyHandler['call'], I> =
 	Awaited<ReturnType<C>> extends ReadableStream<infer S>
@@ -121,6 +131,7 @@ type Get<T, K extends string> = K extends `${infer P}.${infer Rest}`
 	: K extends keyof T
 		? T[K]
 		: never;
+
 type InferStreamReturnOrJsonReturn<T> = T extends ReadableStream<infer U> ? U : T;
 type Procedures<R extends Router, P extends RouterPaths<R>> = Get<R, P>;
 

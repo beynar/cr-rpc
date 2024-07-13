@@ -1,6 +1,7 @@
 // import { procedure, createRouter, type Router } from 'cf-rpc';
+import { WorkerEntrypoint } from 'cloudflare:workers';
 import { procedure, createRouter, type Router } from './lib';
-import { string, object, map, BaseSchema, boolean, instance, Input, number, nullable, undefined_, null_, date } from 'valibot';
+import { string, object, map, BaseSchema, boolean, instance, Input, number, nullable, undefined_, null_, date, set } from 'valibot';
 
 const schema = string();
 type S = typeof schema;
@@ -29,6 +30,14 @@ const locals = {
 	prod: true,
 };
 type Locals = typeof locals;
+
+export class MyService extends WorkerEntrypoint {
+	sum = (a, b) => {
+		this.ctx.storage;
+		return a + b;
+	};
+}
+
 declare module 'cf-rpc' {
 	interface Register {
 		Env: Env;
@@ -52,7 +61,7 @@ const router = {
 				hello: 'world',
 			};
 		}),
-		update: procedure().handle(async ({ event }) => {
+		put: procedure().handle(async ({ event }) => {
 			return {
 				hello: 'world',
 			};
@@ -74,6 +83,20 @@ const router = {
 			.handle(async ({ input, event, ctx }) => {
 				return {
 					hello: input.name,
+				};
+			}),
+		map: procedure()
+			.input(map(string(), string()))
+			.handle(async ({ input, event, ctx }) => {
+				return {
+					hello: input,
+				};
+			}),
+		set: procedure()
+			.input(set(string()))
+			.handle(async ({ input, event, ctx }) => {
+				return {
+					hello: input,
 				};
 			}),
 		string: procedure()
@@ -135,6 +158,7 @@ const router = {
 						string: string(),
 						number: number(),
 						boolean: boolean(),
+						map: map(string(), string()),
 						date: date(),
 						undefined: undefined_(),
 						null: null_(),
@@ -147,6 +171,17 @@ const router = {
 					hello: input,
 				};
 			}),
+	},
+	parametrized: {
+		'[id]': {
+			update: procedure()
+				.input(object({ name: string() }))
+				.handle(async ({ input, event, ctx }) => {
+					return {
+						name: input.name,
+					};
+				}),
+		},
 	},
 } satisfies Router;
 
