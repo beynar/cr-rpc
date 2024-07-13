@@ -21,8 +21,8 @@ export const createRecursiveProxy = (
 			const isLast = key === 'then';
 			if (isLast) {
 				parameters.reverse();
-
-				const [[_lastPath, payload], ...pathParametersArray] = parameters;
+				console.log({ parameters });
+				const [[_lastPath, payload] = [path[path.length - 1], undefined], ...pathParametersArray] = parameters;
 				const pathParameters = pathParametersArray.reduce(
 					(acc, curr) => {
 						Object.assign(acc, curr);

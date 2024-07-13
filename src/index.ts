@@ -1,6 +1,6 @@
 // import { procedure, createRouter, type Router } from 'cf-rpc';
 import { WorkerEntrypoint } from 'cloudflare:workers';
-import { procedure, createRouter, type Router } from './lib';
+import { procedure, createRouter, type Router, RouterPaths, APIWithoutParametrized } from './lib';
 import { string, object, map, BaseSchema, boolean, instance, Input, number, nullable, undefined_, null_, date, set } from 'valibot';
 
 const schema = string();
@@ -176,13 +176,22 @@ const router = {
 		'[id]': {
 			update: procedure()
 				.input(object({ name: string() }))
-				.handle(async ({ input, event, ctx }) => {
+				.handle(async ({ input, event, ctx, params }) => {
 					return {
 						name: input.name,
 					};
 				}),
 		},
 	},
+	parametrized2: path('id', {
+		update: procedure()
+			.input(object({ name: string() }))
+			.handle(async ({ input, event, ctx, params }) => {
+				return {
+					name: input.name,
+				};
+			}),
+	}),
 } satisfies Router;
 
 export type AppRouter = typeof router;
@@ -191,3 +200,7 @@ export default createRouter({
 	router,
 	locals,
 });
+
+const path = <Path extends string, R extends Router<Path>>(path: Path, router: R) => {
+	return router as APIWithoutParametrized<R>;
+};

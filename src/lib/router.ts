@@ -94,6 +94,7 @@ export const createRouter = <R extends Router>({
 			// path.push(verb ? verb : lastPath);
 
 			const [handler, params] = getHandler(router, path);
+			console.log({ params });
 
 			const requestData =
 				method === 'GET'

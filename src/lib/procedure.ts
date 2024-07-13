@@ -1,10 +1,10 @@
 import { HandleFunction, Middleware, PreparedHandler, RequestEvent, ReturnOfMiddlewares, Schema, SchemaInput } from './types';
 
-export const procedure = <M extends Middleware[]>(...middlewares: M) => {
+export const procedure = <M extends Middleware[], Params extends Record<string, string> | undefined = undefined>(...middlewares: M) => {
 	const useMiddlewares = async (event: RequestEvent): Promise<ReturnOfMiddlewares<M>> => {
 		const data = {};
 		if (middlewares) {
-			for (let middleware of middlewares) {
+			for (const middleware of middlewares) {
 				Object.assign(data, await middleware(event));
 			}
 		}
@@ -12,7 +12,7 @@ export const procedure = <M extends Middleware[]>(...middlewares: M) => {
 	};
 	const handler =
 		<S extends Schema | undefined>(schema?: S) =>
-		<H extends HandleFunction<S, M>>(handler: H): PreparedHandler<S, M, H> => {
+		<H extends HandleFunction<S, M, Params>>(handler: H): PreparedHandler<S, M, Params, H> => {
 			return {
 				parse: (data: any) => {
 					if (schema === undefined) {
@@ -22,14 +22,13 @@ export const procedure = <M extends Middleware[]>(...middlewares: M) => {
 						const parseResult = schema.safeParse?.(data) || schema._parse?.(data);
 						const errors = parseResult?.error?.issues || parseResult.issues;
 						if (errors) {
-							console.log(data);
 							throw new Error(JSON.stringify(errors));
 						}
 						return parseResult.data || parseResult.output;
 					}
 				},
-				call: async (event: RequestEvent, input: S extends Schema ? SchemaInput<S> : undefined): Promise<ReturnType<H>> => {
-					return handler({ event, input, ctx: await useMiddlewares(event) } as any);
+				call: async (event: RequestEvent, input: S extends Schema ? SchemaInput<S> : undefined, params: Params): Promise<ReturnType<H>> => {
+					return handler({ event, input, ctx: await useMiddlewares(event), params } as any);
 				},
 			};
 		};
