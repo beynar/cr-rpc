@@ -1,6 +1,8 @@
 import type { Cookies } from './cookies';
 import type { BaseSchema as VSchema, Input as VInfer } from 'valibot';
 import type { Schema as ZSchema, infer as ZInfer } from 'zod';
+import { Handler } from './procedure';
+import { DurableRouter } from './durable';
 
 export interface Register {}
 
@@ -38,24 +40,30 @@ export type StreamCallback<C = string> = {
 export type Middleware<T = any> = (event: RequestEvent) => MaybePromise<T>;
 
 export type RequestEvent = {
+	objectId: string | null;
+	objectName: string | null;
+	path: string[];
 	cookies: Cookies;
 	request: Request;
 	url: URL;
 	waitUntil: ExecutionContext['waitUntil'];
 	passThroughOnException: ExecutionContext['passThroughOnException'];
-	route: RouterPaths<RegisteredRouter, '', '/'>;
 } & Env &
 	(Locals extends never ? {} : { locals: Locals });
 
-export type HandleFunction<S extends Schema | undefined, M extends Middleware[] | undefined> = (
-	payload: HandlePayload<S, M>,
-) => MaybePromise<any>;
+export type HandleFunction<
+	S extends Schema | undefined,
+	M extends Middleware[] | undefined,
+	D extends DurableRouter | undefined = undefined,
+> = (payload: HandlePayload<S, M, D>) => MaybePromise<any>;
 
-export type HandlePayload<S extends Schema | undefined, M extends Middleware[] | undefined> = (S extends Schema
-	? { event: RequestEvent; input: SchemaInput<S> }
-	: { event: RequestEvent }) & {
+export type HandlePayload<
+	S extends Schema | undefined,
+	M extends Middleware[] | undefined,
+	D extends DurableRouter | undefined = undefined,
+> = (S extends Schema ? { event: RequestEvent; input: SchemaInput<S> } : { event: RequestEvent }) & {
 	ctx: ReturnOfMiddlewares<M>;
-};
+} & (D extends DurableRouter ? { object: D } : {});
 
 export type ReturnOfMiddlewares<Use extends Middleware[] | undefined, PreviousData = unknown> = Use extends Middleware[]
 	? Use extends [infer Head, ...infer Tail]
@@ -67,69 +75,28 @@ export type ReturnOfMiddlewares<Use extends Middleware[] | undefined, PreviousDa
 		: unknown
 	: unknown;
 
-type AnyHandler<Path extends string = never> = {
-	call: (event: any, input: any, params: Path) => MaybePromise<any>;
-	parse: (data: any) => MaybePromise<any>;
+export type Router = {
+	[K: string]: Handler<any, any, any, any> | Router;
 };
 
-export type Router<Path extends string = never> = {
-	[K: string]: AnyHandler<Path> | Router<Path>;
+export type API<R extends Router = Router> = {
+	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H>
+		? S extends Schema
+			? (payload: SchemaInput<S>) => ReturnType<H>
+			: () => ReturnType<H>
+		: R[K] extends Router
+			? API<R[K]>
+			: R[K];
 };
 
-// type Path = <P>(path:string, router: Router<>) => Router<T>;
-export type ParametrizedRouter<P extends string, R extends Router<P>> = R;
-
-type IsParametrizedPath<P> = P extends `[${infer Path}]` ? true : false;
-type NonParameterizedPath<P> = P extends `[${infer Path}]` ? Path : P;
-type WithParametrized<K> = K extends string ? `[${K}]` : K;
-
-export type API<R extends Router = Router> = APIWithoutParametrized<{
-	[K in keyof R]: R[K] extends Router
-		? IsParametrizedPath<K> extends true
-			? (param: string) => API<R[K]>
-			: API<R[K]>
-		: R[K] extends AnyHandler
-			? PreparedHandlerType<R[K]>
-			: never;
-}>;
-
-export type APIWithoutParametrized<O> = {
-	[K in NonParameterizedPath<keyof O>]: WithParametrized<K> extends keyof O ? O[WithParametrized<K>] : K extends keyof O ? O[K] : never;
-};
-
-export type PreparedHandler<S extends Schema | undefined, M extends Middleware[], H extends HandleFunction<S, M>> = {
-	parse: (data: any) => Promise<S extends Schema ? SchemaInput<S> : undefined>;
-	call: (event: RequestEvent, input: S extends Schema ? SchemaInput<S> : undefined) => Promise<ReturnType<H>>;
-};
-
-export type PreparedHandlerType<H extends AnyHandler = AnyHandler> = H['call'] extends (
-	event: infer E,
-	input: infer I,
-	params: infer P,
-) => MaybePromise<any>
-	? APICaller<H['call'], I>
-	: never;
-
-type APICaller<C extends AnyHandler['call'], I> =
-	Awaited<ReturnType<C>> extends ReadableStream<infer S>
-		? I extends undefined
-			? (callback: StreamCallback<S>) => never
-			: (input: I, callback: StreamCallback<S>) => ReturnTypeOfCaller<C>
-		: I extends undefined
-			? () => ReturnTypeOfCaller<C>
-			: (input: I) => ReturnTypeOfCaller<C>;
-
-type ReturnTypeOfCaller<C extends AnyHandler['call']> =
-	Awaited<ReturnType<C>> extends ReadableStream<any> ? never : Promise<Awaited<ReturnType<C>>>;
-
-export type RouterPaths<R extends Router, P extends string = '', S extends '.' | '/' = '.'> = {
+export type RouterPaths<R extends Router, P extends string = ''> = {
 	[K in keyof R]: R[K] extends Router
 		? P extends ''
-			? RouterPaths<R[K], `${string & K}`, S>
-			: RouterPaths<R[K], `${P}${S}${string & K}`, S>
+			? RouterPaths<R[K], `${string & K}`>
+			: RouterPaths<R[K], `${P}.${string & K}`>
 		: P extends ''
 			? `${string & K}`
-			: `${P}${S}${string & K}`;
+			: `${P}.${string & K}`;
 }[keyof R];
 
 type Get<T, K extends string> = K extends `${infer P}.${infer Rest}`
@@ -140,11 +107,5 @@ type Get<T, K extends string> = K extends `${infer P}.${infer Rest}`
 		? T[K]
 		: never;
 
-type InferStreamReturnOrJsonReturn<T> = T extends ReadableStream<infer U> ? U : T;
-type Procedures<R extends Router, P extends RouterPaths<R>> = Get<R, P>;
-
-export type ReturnTypeOfProcedure<R extends Router, P extends RouterPaths<R>> =
-	Procedures<R, P> extends AnyHandler ? InferStreamReturnOrJsonReturn<Awaited<ReturnType<Procedures<R, P>['call']>>> : Procedures<R, P>;
-
-export type InputOfProcedure<R extends Router, P extends RouterPaths<R>> =
-	Procedures<R, P> extends AnyHandler ? Parameters<Procedures<R, P>['call']>[1] : never;
+export type InferInputAtPath<R extends Router, P extends RouterPaths<R>> =
+	Get<R, P> extends Handler<any, infer S, any, any> ? (S extends Schema ? SchemaInput<S> : never) : never;

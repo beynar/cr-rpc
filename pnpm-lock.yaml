@@ -11,6 +11,12 @@ dependencies:
   cookie:
     specifier: ^0.6.0
     version: 0.6.0
+  devalue:
+    specifier: ^5.0.0
+    version: 5.0.0
+  neoqs:
+    specifier: ^6.12.3
+    version: 6.12.3
 
 devDependencies:
   '@cloudflare/vitest-pool-workers':
@@ -28,6 +34,9 @@ devDependencies:
   '@vitest/ui':
     specifier: ^1.6.0
     version: 1.6.0(vitest@1.3.0)
+  arktype:
+    specifier: 2.0.0-beta.2
+    version: 2.0.0-beta.2
   estrella:
     specifier: ^1.4.1
     version: 1.4.1
@@ -51,6 +60,16 @@ devDependencies:
     version: 3.23.8
 
 packages:
+
+  /@ark/schema@0.2.2:
+    resolution: {integrity: sha512-3GyWVptFzmUZTBAwobiuk2Xa1wXeWNOOaHWcYl3pYTTdl5QNuB/53JnHXL0NrFW4Yvv7cgTcRsZQby7pNAeeJA==}
+    dependencies:
+      '@ark/util': 0.1.2
+    dev: true
+
+  /@ark/util@0.1.2:
+    resolution: {integrity: sha512-JhcPZhF8T8Eb9UxJqh3X8tOwZpnuW89azKlPnRhFXymhy/wBFPRC9+J+Vu+iUc/kplW3uloZb9n5R3EVVWUBgw==}
+    dev: true
 
   /@cloudflare/kv-asset-handler@0.3.1:
     resolution: {integrity: sha512-lKN2XCfKCmpKb86a1tl4GIwsJYDy9TGuwjhDELLmpKygQhw8X2xR4dusgpC5Tg7q1pB96Eb0rBo81kxSILQMwA==}
@@ -1192,6 +1211,13 @@ packages:
       picomatch: 2.3.1
     dev: true
 
+  /arktype@2.0.0-beta.2:
+    resolution: {integrity: sha512-WLxtViYiR8T+COYzZgHGnl3eVGwAJJXHRPfGMqRCoMeNpVb1EE+9kMhiEOq0yzEoP6Y91yTPTuhINt3WbBCYxA==}
+    dependencies:
+      '@ark/schema': 0.2.2
+      '@ark/util': 0.1.2
+    dev: true
+
   /array-union@2.1.0:
     resolution: {integrity: sha512-HGyxoOTYUyCM6stUe6EJgnd4EoewAI7zMdfqO+kGjnlZmBDz/cR5pf8r/cR4Wq60sL/p0IkcjUEEPwS3GFrIyw==}
     engines: {node: '>=8'}
@@ -1376,6 +1402,10 @@ packages:
   /devalue@4.3.3:
     resolution: {integrity: sha512-UH8EL6H2ifcY8TbD2QsxwCC/pr5xSwPvv85LrLXVihmHVC3T3YqTCIwnR5ak0yO1KYqlxrPVOA/JVZJYPy2ATg==}
     dev: true
+
+  /devalue@5.0.0:
+    resolution: {integrity: sha512-gO+/OMXF7488D+u3ue+G7Y4AA3ZmUnB3eHJXmBTgNHvr4ZNzl36A0ZtG+XCRNYCkYx/bFmw4qtkoFLa+wSrwAA==}
+    dev: false
 
   /diff-sequences@29.6.3:
     resolution: {integrity: sha512-EjePK1srD3P08o2j4f0ExnylqRs5B9tJjcp9t1krH2qRi8CCdsYfwe9JgSLurFBWwq4uOlipzfk5fHNvwFKr8Q==}
@@ -1976,6 +2006,10 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
     dev: true
+
+  /neoqs@6.12.3:
+    resolution: {integrity: sha512-49T7eZocIfmWbdWT4m1QJ0XjYZ6hGalpNnMcY8c1ex3NbcG/9mwrk8EtBwUXJJ1d79sf3KJ3KFQ2rdAKecWenA==}
+    dev: false
 
   /node-forge@1.3.1:
     resolution: {integrity: sha512-dPEtOeMvF9VMcYV/1Wb8CPoVAXtp6MKMlcbAt4ddqmGqUJ6fQZFXkNZNkNlfevtNkGtaSoXf/vNNNSvgrdXwtA==}

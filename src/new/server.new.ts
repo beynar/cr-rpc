@@ -1,7 +1,7 @@
-import { PreparedHandler, RequestEvent, Router, Env, Locals, RouterPaths, RegisteredRouter, API } from './types';
-import { createCookies } from './cookies';
-import { CorsPair } from './cors';
-import { tryParse } from './utils';
+import { PreparedHandler, RequestEvent, Router, Env, Locals, RouterPaths, RegisteredRouter, API } from './types.new';
+import { createCookies } from './cookies.new';
+import { CorsPair } from './cors.new';
+import { tryParse } from './utils.new';
 import { deform, form } from 'ampliform';
 import { MaybePromise } from 'valibot';
 import { createRecursiveProxy } from './client';

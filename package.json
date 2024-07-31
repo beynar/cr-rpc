@@ -1,10 +1,9 @@
 {
-	"name": "cf-rpc",
+	"name": "flarepc",
 	"version": "0.0.20",
 	"private": false,
 	"scripts": {
 		"deploy": "wrangler deploy",
-		"prepublishOnly": "npm run build",
 		"dev": "wrangler dev",
 		"build": "tsup && node fixBuildTypes.js",
 		"start": "wrangler dev",
@@ -43,6 +42,7 @@
 		"@types/cookie": "^0.6.0",
 		"@types/js-cookie": "^3.0.6",
 		"@vitest/ui": "^1.6.0",
+		"arktype": "2.0.0-beta.2",
 		"estrella": "^1.4.1",
 		"tsup": "^8.0.2",
 		"typescript": "^5.5.3",
@@ -53,6 +53,8 @@
 	},
 	"dependencies": {
 		"ampliform": "^0.0.9",
-		"cookie": "^0.6.0"
+		"cookie": "^0.6.0",
+		"devalue": "^5.0.0",
+		"neoqs": "^6.12.3"
 	}
 }

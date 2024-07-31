@@ -1,83 +1,101 @@
-import type { API, MaybePromise, Router, StreamCallback } from './types';
+import type { API, MaybePromise, Router } from './types';
 import { tryParse } from './utils';
-import { deform, form } from 'ampliform';
+import { deform, form } from './deform';
+import { stringify } from 'neoqs';
+// export const createRecursiveProxy = (
+// 	callback: (opts: {
+// 		path: string[];
+// 		args: unknown[];
+// 		pathParameters: { [key: string]: unknown };
+// 		payload: any;
+// 		callbackFunction: any;
+// 	}) => unknown,
+// 	path: string[],
+// 	parameters: [string, any][] = [],
+// 	callbackFunction: any = null,
+// ) => {
+// 	const proxy: unknown = new Proxy(() => {}, {
+// 		get(_obj, key) {
+// 			if (typeof key !== 'string') return undefined;
 
-export const createRecursiveProxy = (
-	callback: (opts: {
-		path: string[];
-		args: unknown[];
-		pathParameters: { [key: string]: unknown };
-		payload: any;
-		callbackFunction: any;
-	}) => unknown,
-	path: string[],
-	parameters: [string, any][] = [],
-	callbackFunction: any = null,
-) => {
-	const proxy: unknown = new Proxy(() => {}, {
-		get(_obj, key) {
-			if (typeof key !== 'string') return undefined;
+// 			const isLast = key === 'then';
+// 			if (isLast) {
+// 				parameters.reverse();
+// 				const [[_lastPath, payload] = [path[path.length - 1], undefined], ...pathParametersArray] = parameters;
+// 				const pathParameters = pathParametersArray.reduce(
+// 					(acc, curr) => {
+// 						Object.assign(acc, curr);
+// 						return acc;
+// 					},
+// 					{} as Record<string, boolean>,
+// 				);
+// 				path = path.reduce((acc, key, i) => {
+// 					const isLast = i === path.length - 1;
+// 					const isParametrized = key.startsWith('[') && key.endsWith(']');
+// 					if (isLast) {
+// 						acc.push(key.replace('[', '').replace(']', ''));
+// 					} else if (isParametrized) {
+// 						const parameter = parameters.find((p) => p[0] === key);
+// 						if (parameter) {
+// 							acc.push(parameter[1]);
+// 						}
+// 					} else {
+// 						acc.push(key);
+// 					}
 
-			const isLast = key === 'then';
-			if (isLast) {
-				parameters.reverse();
-				console.log({ parameters });
-				const [[_lastPath, payload] = [path[path.length - 1], undefined], ...pathParametersArray] = parameters;
-				const pathParameters = pathParametersArray.reduce(
-					(acc, curr) => {
-						Object.assign(acc, curr);
-						return acc;
-					},
-					{} as Record<string, boolean>,
-				);
-				path = path.reduce((acc, key, i) => {
-					const isLast = i === path.length - 1;
-					const isParametrized = key.startsWith('[') && key.endsWith(']');
-					if (isLast) {
-						acc.push(key.replace('[', '').replace(']', ''));
-					} else if (isParametrized) {
-						const parameter = parameters.find((p) => p[0] === key);
-						if (parameter) {
-							acc.push(parameter[1]);
-						}
-					} else {
-						acc.push(key);
-					}
+// 					return acc;
+// 				}, [] as string[]);
+// 				return (resolve: (value: any) => void, reject: (reason?: any) => void) => {
+// 					return resolve(
+// 						callback({
+// 							path,
+// 							args: [],
+// 							payload,
+// 							pathParameters,
+// 							callbackFunction,
+// 						}),
+// 					);
+// 				};
+// 			}
 
-					return acc;
-				}, [] as string[]);
+// 			return createRecursiveProxy(callback, [...path, key], parameters, callbackFunction);
+// 		},
+// 		apply(_1, _2, args) {
+// 			const pathParameter = args[0];
+// 			if (args[1]) {
+// 				callbackFunction = args[1];
+// 			}
+// 			const previousPath = path.slice(0, -1);
+// 			let pathParameterKey = path.at(-1) as string;
+// 			if (pathParameterKey && pathParameter) {
+// 				pathParameterKey = `[${pathParameterKey}]`;
+// 				parameters.push([pathParameterKey, pathParameter]);
+// 			}
+// 			return createRecursiveProxy(callback, [...previousPath, pathParameterKey], parameters, callbackFunction);
+// 		},
+// 	});
+// 	return proxy;
+// };
 
-				console.log({ parameters, path, payload, _lastPath });
-
-				return (resolve: (value: any) => void, reject: (reason?: any) => void) => {
-					return resolve(
-						callback({
-							path,
-							args: [],
-							payload,
-							pathParameters,
-							callbackFunction,
-						}),
-					);
-				};
-			}
-
-			return createRecursiveProxy(callback, [...path, key], parameters, callbackFunction);
+export const createRecursiveProxy = (callback: (opts: { path: string[]; args: unknown[]; payload: any }) => unknown, path: string[]) => {
+	const proxy: unknown = new Proxy(
+		() => {
+			//
 		},
-		apply(_1, _2, args) {
-			const pathParameter = args[0];
-			if (args[1]) {
-				callbackFunction = args[1];
-			}
-			const previousPath = path.slice(0, -1);
-			let pathParameterKey = path.at(-1) as string;
-			if (pathParameterKey && pathParameter) {
-				pathParameterKey = `[${pathParameterKey}]`;
-				parameters.push([pathParameterKey, pathParameter]);
-			}
-			return createRecursiveProxy(callback, [...previousPath, pathParameterKey], parameters, callbackFunction);
+		{
+			get(_obj, key) {
+				if (typeof key !== 'string') return undefined;
+				return createRecursiveProxy(callback, [...path, key]);
+			},
+			apply(_1, _2, args) {
+				return callback({
+					path,
+					args,
+					payload: args[0],
+				});
+			},
 		},
-	});
+	);
 	return proxy;
 };
 
@@ -97,7 +115,7 @@ export const createClient = <R extends Router>(
 		onError: () => {},
 	},
 ) => {
-	return createRecursiveProxy(async ({ path, args, payload, pathParameters, callbackFunction }) => {
+	return createRecursiveProxy(async ({ path, args, payload }) => {
 		let method = 'POST';
 		const maybeVerb = path[path.length - 1];
 		const verbs = new Set(['get', 'put', 'delete', 'patch']);
@@ -105,12 +123,13 @@ export const createClient = <R extends Router>(
 			path.pop();
 			method = maybeVerb.toUpperCase();
 		}
+
 		return f(`${endpoint}/${path.join('/')}${method === 'GET' ? '' : ''}`, {
 			method,
 			body: method === 'GET' ? undefined : form(payload),
 			headers: Object.assign(
 				{
-					'x-wrpc-client': 'true',
+					'x-flarepc-client': 'true',
 				},
 				typeof headers === 'function'
 					? await headers({

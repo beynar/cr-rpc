@@ -1,11 +1,8 @@
 // import { procedure, createRouter, type Router } from 'cf-rpc';
 import { WorkerEntrypoint } from 'cloudflare:workers';
-import { procedure, createRouter, type Router, RouterPaths, APIWithoutParametrized } from './lib';
+import { procedure, createRouter, type Router, HandleFunction, Handler } from './lib';
 import { string, object, map, BaseSchema, boolean, instance, Input, number, nullable, undefined_, null_, date, set } from 'valibot';
-
-const schema = string();
-type S = typeof schema;
-type I = typeof schema extends BaseSchema ? Input<typeof schema> : 'error';
+import { createClient } from './lib/client';
 
 interface Env {
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
@@ -37,7 +34,14 @@ export class MyService extends WorkerEntrypoint {
 	};
 }
 
-declare module 'cf-rpc' {
+declare global {
+	interface Register {
+		Env: Env;
+		Router: AppRouter;
+		Locals: Locals;
+	}
+}
+declare module 'flarepc' {
 	interface Register {
 		Env: Env;
 		Router: AppRouter;
@@ -45,15 +49,13 @@ declare module 'cf-rpc' {
 	}
 }
 
-type WithParametrized<K> = K extends string ? `[${K}]` : K;
-const path = <const Path extends string, R extends Router<Path>>(path: Path, router: R): Record<WithParametrized<Path>, R> => {
-	return {
-		[`[${path}]`]: router,
-	} as Record<WithParametrized<Path>, R>;
-};
-
 const router = {
-	parametrized2: path('id', {
+	text: procedure().handle(async ({ event }) => {
+		return {
+			hello: 'world',
+		};
+	}),
+	parametrized2: {
 		update: procedure()
 			.input(object({ name: string() }))
 			.handle(async ({ input, event, ctx }) => {
@@ -61,7 +63,7 @@ const router = {
 					name: input.name,
 				};
 			}),
-	}),
+	},
 	user: {
 		get: procedure()
 			.input(object({ name: string(), map: map(string(), string()) }))
@@ -101,7 +103,11 @@ const router = {
 					hello: input.name,
 				};
 			}),
-		map: procedure()
+		map: procedure(() => {
+			return {
+				ok: true,
+			};
+		})
 			.input(map(string(), string()))
 			.handle(async ({ input, event, ctx }) => {
 				return {
@@ -149,7 +155,8 @@ const router = {
 			}),
 		null: procedure()
 			.input(null_())
-			.handle(async ({ input, event, ctx }) => {
+			.handle(async ({ input }) => {
+				console.log({ input });
 				return {
 					hello: input,
 				};
@@ -190,16 +197,37 @@ const router = {
 	},
 	parametrized: {
 		'[id]': {
-			update: procedure()
+			update: procedure(() => {
+				return {
+					ok: true,
+				};
+			})
 				.input(object({ name: string() }))
-				.handle(async ({ input, event, ctx }) => {
+				.handle(({ input, event, ctx }) => {
 					return {
 						name: input.name,
 					};
 				}),
+			// .handle(async ({ input, event, ctx }) => {
+			// 	return {
+			// 		name: input.name,
+			// 	};
+			// }),
 		},
 	},
-} satisfies Router;
+};
+
+const routerExample = {
+	parametrized: {
+		update: procedure()
+			.input(object({ name: string() }))
+			.handle(({ input, event, ctx }) => {
+				return {
+					name: input.name,
+				};
+			}),
+	},
+};
 
 export type AppRouter = typeof router;
 
