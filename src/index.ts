@@ -1,15 +1,12 @@
-// import { procedure, createRouter, type Router } from 'cf-rpc';
-import { WorkerEntrypoint } from 'cloudflare:workers';
-import { procedure, createRouter, type Router, HandleFunction, Handler } from './lib';
-import { string, object, map, BaseSchema, boolean, instance, Input, number, nullable, undefined_, null_, date, set } from 'valibot';
-import { createClient } from './lib/client';
-
+import { procedure, createServer, durableProcedure, Router, createHandler, RouterPaths, createDurableRouter } from './lib';
+import { string, object, map, BaseSchema, boolean, instance, number, undefined_, null_, date, set, optional } from 'valibot';
+import { InferDurableServer, createReceiver, createSender, DurableRouter } from './lib';
 interface Env {
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
 	MY_KV_NAMESPACE: KVNamespace;
 	//
 	// Example binding to Durable Object. Learn more at https://developers.cloudflare.com/workers/runtime-apis/durable-objects/
-	MY_DURABLE_OBJECT: DurableObjectNamespace;
+	TestDurable: DurableObjectNamespace;
 	//
 	// Example binding to R2. Learn more at https://developers.cloudflare.com/workers/runtime-apis/r2/
 	MY_BUCKET: R2Bucket;
@@ -27,20 +24,6 @@ const locals = {
 	prod: true,
 };
 type Locals = typeof locals;
-
-export class MyService extends WorkerEntrypoint {
-	sum = (a: number, b: number) => {
-		return a + b;
-	};
-}
-
-declare global {
-	interface Register {
-		Env: Env;
-		Router: AppRouter;
-		Locals: Locals;
-	}
-}
 declare module 'flarepc' {
 	interface Register {
 		Env: Env;
@@ -195,43 +178,81 @@ const router = {
 				};
 			}),
 	},
-	parametrized: {
-		'[id]': {
-			update: procedure(() => {
-				return {
-					ok: true,
-				};
-			})
-				.input(object({ name: string() }))
-				.handle(({ input, event, ctx }) => {
-					return {
-						name: input.name,
-					};
-				}),
-			// .handle(async ({ input, event, ctx }) => {
-			// 	return {
-			// 		name: input.name,
-			// 	};
-			// }),
-		},
-	},
 };
 
-const routerExample = {
-	parametrized: {
-		update: procedure()
+const testProcedure = durableProcedure<TestDurable>();
+
+const topicsIn = {
+	message: testProcedure()
+		.input(object({ message: string() }))
+		.handle(({ input, object }) => {
+			object.send('message', { message: input.message });
+			return {
+				hello: input.message,
+			};
+		}),
+};
+const topicsOut = {
+	message: testProcedure()
+		.input(object({ message: optional(string(), 'hello') }))
+		.handle(({ input, object }) => {
+			object.send('message', { message: input.message });
+			return {
+				hello: input.message,
+			};
+		}),
+	test: {
+		test: testProcedure()
 			.input(object({ name: string() }))
-			.handle(({ input, event, ctx }) => {
+			.handle(({ input, object }) => {
+				object.send('message', {
+					message: 'input.name',
+				});
 				return {
-					name: input.name,
+					hello: input.name,
 				};
 			}),
 	},
 };
 
+const durableRouter = {
+	test: {
+		test: {
+			test: testProcedure()
+				.input(object({ name: string() }))
+				.handle(({ input, object }) => {
+					return {
+						hello: input.name,
+					};
+				}),
+		},
+	},
+};
+export class TestDurable extends createDurableRouter() {
+	send = createSender(topicsOut, this);
+	receive = createReceiver(topicsIn, this);
+	handle = createHandler(router, this);
+	constructor(ctx: DurableObjectState, env: Env) {
+		super(ctx, env, durableRouter, topicsIn, topicsOut);
+	}
+}
+
+type TestDurableServer = InferDurableServer<TestDurable>;
+
 export type AppRouter = typeof router;
 
-export default createRouter({
+const server = createServer({
+	objects: {
+		TestDurable: TestDurable,
+	},
 	router,
 	locals,
 });
+
+export type Server = {
+	router: AppRouter;
+	objects: {
+		TestDurable: TestDurableServer;
+	};
+};
+export default server;

@@ -1,105 +1,63 @@
-import type { API, MaybePromise, Router } from './types';
+import type { API, Client, MaybePromise, Router, Server } from './types';
 import { tryParse } from './utils';
 import { deform, form } from './deform';
 import { stringify } from 'neoqs';
-// export const createRecursiveProxy = (
-// 	callback: (opts: {
-// 		path: string[];
-// 		args: unknown[];
-// 		pathParameters: { [key: string]: unknown };
-// 		payload: any;
-// 		callbackFunction: any;
-// 	}) => unknown,
-// 	path: string[],
-// 	parameters: [string, any][] = [],
-// 	callbackFunction: any = null,
-// ) => {
-// 	const proxy: unknown = new Proxy(() => {}, {
-// 		get(_obj, key) {
-// 			if (typeof key !== 'string') return undefined;
+import { boolean } from 'valibot';
+import { createWebSocketConnection } from './websocket';
+type DObject = {
+	name?: string;
+	id?: string;
+	call: boolean;
+	websocket: boolean;
+};
+export const createRecursiveProxy = (
+	callback: (opts: { path: string[]; payload: any; object: DObject; callbackFunction: any }) => unknown,
+	object: DObject,
+	path: string[] = [],
+	payload: unknown[] = [],
+	callbackFunction: any = null,
+) => {
+	const proxy: unknown = new Proxy(() => {}, {
+		get(_obj, key) {
+			if (typeof key !== 'string') return undefined;
+			if (key === 'then') {
+				// mean that it's the last path and the api is effectively called
+				if (!object.call) {
+					object.name = undefined;
+					object.id = undefined;
+				} else if (path[path.length - 1] === 'connect' && path.length === 2 && path[0] === object.name) {
+					// If connect is called on the object, it means that we're are trying to connect to a websocket
+					object.websocket = true;
+					object.call = false;
+				}
+				return (resolve: (value: any) => void, reject: (reason?: any) => void) => {
+					return resolve(
+						callback({
+							path,
+							payload,
+							object,
+							callbackFunction,
+						}),
+					);
+				};
+			}
 
-// 			const isLast = key === 'then';
-// 			if (isLast) {
-// 				parameters.reverse();
-// 				const [[_lastPath, payload] = [path[path.length - 1], undefined], ...pathParametersArray] = parameters;
-// 				const pathParameters = pathParametersArray.reduce(
-// 					(acc, curr) => {
-// 						Object.assign(acc, curr);
-// 						return acc;
-// 					},
-// 					{} as Record<string, boolean>,
-// 				);
-// 				path = path.reduce((acc, key, i) => {
-// 					const isLast = i === path.length - 1;
-// 					const isParametrized = key.startsWith('[') && key.endsWith(']');
-// 					if (isLast) {
-// 						acc.push(key.replace('[', '').replace(']', ''));
-// 					} else if (isParametrized) {
-// 						const parameter = parameters.find((p) => p[0] === key);
-// 						if (parameter) {
-// 							acc.push(parameter[1]);
-// 						}
-// 					} else {
-// 						acc.push(key);
-// 					}
-
-// 					return acc;
-// 				}, [] as string[]);
-// 				return (resolve: (value: any) => void, reject: (reason?: any) => void) => {
-// 					return resolve(
-// 						callback({
-// 							path,
-// 							args: [],
-// 							payload,
-// 							pathParameters,
-// 							callbackFunction,
-// 						}),
-// 					);
-// 				};
-// 			}
-
-// 			return createRecursiveProxy(callback, [...path, key], parameters, callbackFunction);
-// 		},
-// 		apply(_1, _2, args) {
-// 			const pathParameter = args[0];
-// 			if (args[1]) {
-// 				callbackFunction = args[1];
-// 			}
-// 			const previousPath = path.slice(0, -1);
-// 			let pathParameterKey = path.at(-1) as string;
-// 			if (pathParameterKey && pathParameter) {
-// 				pathParameterKey = `[${pathParameterKey}]`;
-// 				parameters.push([pathParameterKey, pathParameter]);
-// 			}
-// 			return createRecursiveProxy(callback, [...previousPath, pathParameterKey], parameters, callbackFunction);
-// 		},
-// 	});
-// 	return proxy;
-// };
-
-export const createRecursiveProxy = (callback: (opts: { path: string[]; args: unknown[]; payload: any }) => unknown, path: string[]) => {
-	const proxy: unknown = new Proxy(
-		() => {
-			//
+			return createRecursiveProxy(callback, object, [...path, key], payload, callbackFunction);
 		},
-		{
-			get(_obj, key) {
-				if (typeof key !== 'string') return undefined;
-				return createRecursiveProxy(callback, [...path, key]);
-			},
-			apply(_1, _2, args) {
-				return callback({
-					path,
-					args,
-					payload: args[0],
-				});
-			},
+		apply(_1, _2, args) {
+			if (!object.id) {
+				object.name = path[path.length - 1];
+				object.id = args[0];
+			} else {
+				object.call = true;
+			}
+			return createRecursiveProxy(callback, object, path, args[0], args[1]);
 		},
-	);
+	});
 	return proxy;
 };
 
-export const createClient = <R extends Router>(
+export const createClient = <S extends Server>(
 	{
 		endpoint = '/api',
 		headers,
@@ -115,7 +73,16 @@ export const createClient = <R extends Router>(
 		onError: () => {},
 	},
 ) => {
-	return createRecursiveProxy(async ({ path, args, payload }) => {
+	let object = {
+		name: undefined,
+		id: undefined,
+		call: false,
+		websocket: false,
+	};
+	return createRecursiveProxy(async ({ path, payload, object, callbackFunction }) => {
+		if (object.websocket) {
+			return createWebSocketConnection(payload, endpoint);
+		}
 		let method = 'POST';
 		const maybeVerb = path[path.length - 1];
 		const verbs = new Set(['get', 'put', 'delete', 'patch']);
@@ -137,6 +104,12 @@ export const createClient = <R extends Router>(
 							input: payload,
 						})
 					: headers,
+				object.call
+					? {
+							'x-flarepc-object-name': object.name,
+							'x-flarepc-object-id': object.id,
+						}
+					: {},
 			),
 		}).then(async (res) => {
 			if (res.headers.get('content-type') === 'text/event-stream') {
@@ -154,10 +127,10 @@ export const createClient = <R extends Router>(
 						if (first && i === 0 && line === '') {
 							return;
 						}
-						(args[1] as any)({
-							chunk: tryParse(line),
-							first,
-						});
+						// (args[1] as any)({
+						// 	chunk: tryParse(line),
+						// 	first,
+						// });
 						first = false;
 					});
 				};
@@ -177,5 +150,5 @@ export const createClient = <R extends Router>(
 				}
 			}
 		});
-	}, []) as API<R>;
+	}, object) as Client<S>;
 };

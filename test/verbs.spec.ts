@@ -1,9 +1,9 @@
-import { it, expect, test } from 'vitest';
-import worker, { AppRouter } from '../src/index';
+import { it, expect, test, describe } from 'vitest';
+import worker, { Server } from '../src/index';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { createClient } from '../src/lib/client';
 
-test('Should use GET method', async () => {
+describe('Should use GET method', async () => {
 	const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 	async function f(this: { method: string }, _endpoint: any, body: any) {
 		const request = new IncomingRequest(_endpoint, body);
@@ -16,7 +16,7 @@ test('Should use GET method', async () => {
 
 	it('Should use GET method', async () => {
 		let THIS = { method: 'any' };
-		const api = createClient<AppRouter>({
+		const api = createClient<Server>({
 			endpoint: 'https://example.com',
 			// @ts-ignore
 			fetch: f.bind(THIS),
@@ -29,7 +29,7 @@ test('Should use GET method', async () => {
 	});
 	it('Should use PUT method', async () => {
 		let THIS = { method: 'any' };
-		const api = createClient<AppRouter>({
+		const api = createClient<Server>({
 			endpoint: 'https://example.com',
 			// @ts-ignore
 			fetch: f.bind(THIS),
@@ -43,7 +43,7 @@ test('Should use GET method', async () => {
 	});
 	it('Should use PATCH method', async () => {
 		let THIS = { method: 'any' };
-		const api = createClient<AppRouter>({
+		const api = createClient<Server>({
 			endpoint: 'https://example.com',
 			// @ts-ignore
 			fetch: f.bind(THIS),
@@ -56,7 +56,7 @@ test('Should use GET method', async () => {
 	});
 	it('Should use DELETE method', async () => {
 		let THIS = { method: 'any' };
-		const api = createClient<AppRouter>({
+		const api = createClient<Server>({
 			endpoint: 'https://example.com',
 			// @ts-ignore
 			fetch: f.bind(THIS),

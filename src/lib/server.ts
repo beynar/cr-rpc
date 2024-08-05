@@ -1,4 +1,4 @@
-import { RequestEvent, Router, Env, Locals, RegisteredRouter, API, MaybePromise } from './types';
+import { RequestEvent, Router, Env, Locals, RegisteredRouter, API, MaybePromise, Server } from './types';
 import { createCookies } from './cookies';
 import { CorsPair } from './cors';
 import { deform, form } from './deform';
@@ -15,26 +15,29 @@ export const getHandler = (router: Router, path: string[]) => {
 	});
 	return (handler ? handler : null) as Handler<any, any, any> | null;
 };
-const createRequestEvent = async (
+
+export const createPartialRequestEvent = async (
 	request: Request,
 	locals: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>),
 	env: Env,
 	ctx: ExecutionContext,
-): Promise<RequestEvent> => {
+): Promise<Partial<RequestEvent>> => {
 	const url = new URL(request.url);
-	const path = url.pathname.split('/').filter(Boolean);
-	const objectId = request.headers.get('x-flarepc-object-id');
-	const objectName = request.headers.get('x-flarepc-object-name');
+	let path = url.pathname.split('/').filter(Boolean);
+	const objectId = request.headers.get('x-flarepc-object-id') || null;
+	const objectName = request.headers.get('x-flarepc-object-name') || null;
 	const method = request.method;
 	if (method !== 'POST') {
 		path.push(method.toLocaleLowerCase());
 	}
+	if (objectId && objectName) {
+		path = path.slice(1);
+	}
 	return Object.assign(
-		ctx,
-		env,
-		path,
-		{ locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals },
+		{},
 		{
+			path,
+			locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals,
 			objectId,
 			objectName,
 			request,
@@ -42,10 +45,13 @@ const createRequestEvent = async (
 			caches,
 			cookies: createCookies(request),
 		},
-	) as RequestEvent;
+	);
+};
+export const createRequestEvent = (partialEvent: Partial<RequestEvent>, env: Env, ctx: ExecutionContext): RequestEvent => {
+	return Object.assign({}, ctx, partialEvent, env) as RequestEvent;
 };
 
-export const createRouter = <R extends Router>({
+export const createServer = <R extends Router, O extends Record<string, { prototype: DurableRouter }>>({
 	router,
 	before = [],
 	after = [],
@@ -60,10 +66,11 @@ export const createRouter = <R extends Router>({
 	after?: ((response: Response, event: RequestEvent) => Response | void)[];
 	catch?: (error: unknown) => Response | void;
 	cors?: CorsPair;
-	objects?: Record<string, DurableRouter>;
+	objects?: O;
 }) => ({
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		const event = await createRequestEvent(request, locals, env, ctx);
+		const partialEvent = await createPartialRequestEvent(request, locals, env, ctx);
+		const event = createRequestEvent(partialEvent, env, ctx);
 		let response: Response | undefined;
 
 		$: try {
@@ -72,11 +79,12 @@ export const createRouter = <R extends Router>({
 				if (response) break $;
 			}
 			const objectClass = event.objectName ? objects?.[event.objectName] : null;
-
 			if (objectClass) {
 				let id = (env[event.objectName as keyof typeof env] as any).idFromName(event.objectId);
+
 				let stub = (env[event.objectName as keyof typeof env] as any).get(id) as DurableObjectStub<DurableRouter>;
-				response = await stub.handleRpc(event, event.path);
+
+				response = await stub.handleRpc(request, locals);
 			} else {
 				const handler = getHandler(router, event.path);
 				if (!handler) {
@@ -86,6 +94,7 @@ export const createRouter = <R extends Router>({
 				}
 			}
 		} catch (error) {
+			console.log({ error });
 			c?.(error);
 			response = handleError(error);
 		}

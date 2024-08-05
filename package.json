@@ -1,6 +1,6 @@
 {
 	"name": "flarepc",
-	"version": "0.0.20",
+	"version": "0.0.23",
 	"private": false,
 	"scripts": {
 		"deploy": "wrangler deploy",
@@ -37,18 +37,18 @@
 		"!dist/**/*.spec.*"
 	],
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.1.19",
-		"@cloudflare/workers-types": "^4.20240512.0",
+		"@cloudflare/vitest-pool-workers": "^0.4.17",
+		"@cloudflare/workers-types": "^4.20240729.0",
 		"@types/cookie": "^0.6.0",
 		"@types/js-cookie": "^3.0.6",
-		"@vitest/ui": "^1.6.0",
+		"@vitest/ui": "^1.5.0",
 		"arktype": "2.0.0-beta.2",
 		"estrella": "^1.4.1",
-		"tsup": "^8.0.2",
-		"typescript": "^5.5.3",
+		"tsup": "^8.2.4",
+		"typescript": "^5.5.4",
 		"valibot": "^0.30.0",
-		"vitest": "1.3.0",
-		"wrangler": "^3.57.1",
+		"vitest": "1.5.0",
+		"wrangler": "^3.68.0",
 		"zod": "^3.23.8"
 	},
 	"dependencies": {

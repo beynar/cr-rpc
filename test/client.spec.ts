@@ -6,7 +6,7 @@ import { createClient } from '../src/lib/client';
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
 const api = () =>
-	createClient<AppRouter>({
+	createClient<Server>({
 		endpoint: 'https://example.com',
 		// @ts-ignore
 		fetch: async (_endpoint: any, body: any) => {
