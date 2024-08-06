@@ -1,4 +1,4 @@
-import { procedure, createServer, durableProcedure, Router, RouterPaths, createDurableServer } from './lib';
+import { procedure, createServer, durableProcedure, Router, RouterPaths, createDurableServer, SchemaInput, Handler, Schema } from './lib';
 import { string, object, map, BaseSchema, boolean, instance, number, undefined_, null_, date, set, optional } from 'valibot';
 import { createReceiver, createSender } from './lib';
 interface Env {}
@@ -204,12 +204,8 @@ const durableRouter = {
 		},
 	},
 };
-export class TestDurable extends createDurableServer() {
-	send = createSender(topicsOut, this);
-	receive = createReceiver(topicsIn, this);
-	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env, durableRouter, topicsIn, topicsOut);
-	}
+export class TestDurable extends createDurableServer({}, topicsIn, topicsOut) {
+	router = durableRouter;
 }
 
 export type AppRouter = typeof router;

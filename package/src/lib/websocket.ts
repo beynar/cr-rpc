@@ -1,7 +1,7 @@
 import { DObject } from './client';
 import { socketify, socketiparse } from './deform';
 import { Handler } from './procedure';
-import { Get, InferOutPutAtPath, InferSchemaOutPutAtPath, RegisteredParticipant, Router, RouterPaths } from './types';
+import { Get, InferOutPutAtPath, InferSchemaOutPutAtPath, RegisteredParticipant, Router, RouterPaths, Schema, SchemaInput } from './types';
 
 type MessagePayload<O extends Router, T extends RouterPaths<O>> = {
 	type: T;
@@ -19,7 +19,34 @@ export type ConnectOptions<O extends Router> = {
 	}>;
 };
 
+type WSAPI<R extends Router> = {
+	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D>
+		? S extends Schema
+			? (payload: SchemaInput<S>) => void
+			: () => void
+		: R[K] extends Router
+			? WSAPI<R[K]>
+			: R[K];
+};
+
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const createRecursiveProxy = (callback: (opts: { type: string; data: unknown[] }) => unknown, path: string[] = []) => {
+	const proxy: unknown = new Proxy(() => {}, {
+		get(_obj, key) {
+			if (typeof key !== 'string') return undefined;
+			return createRecursiveProxy(callback, [...path, key]);
+		},
+		apply(_1, _2, args) {
+			return callback({
+				type: path.join('.'),
+				data: args[0],
+			});
+		},
+	});
+	return proxy;
+};
+
 export class WebSocketClient<I extends Router, O extends Router> {
 	protected lastHeartBeatTs?: Date;
 	private autoReconnectInterval = 1000; // ms
@@ -61,14 +88,14 @@ export class WebSocketClient<I extends Router, O extends Router> {
 		this.state = 'CLOSED';
 	};
 
-	send = <T extends RouterPaths<I>>(type: T, data: InferSchemaOutPutAtPath<I, T>) => {
+	send = createRecursiveProxy(async ({ type, data }) => {
 		const message = socketify({ type, data });
 		if (!this.ws || this.ws.readyState !== 1) {
 			this.sendQueue.push(message);
 		} else {
 			this.ws.send(message);
 		}
-	};
+	}) as WSAPI<I>;
 
 	private reconnect = async () => {
 		if (this.state === 'RECONNECTING') return;
@@ -171,7 +198,6 @@ export class WebSocketClient<I extends Router, O extends Router> {
 
 	onMessage = (e: MessageEvent) => {
 		if (e.data === 'pong') {
-			console.log('pong');
 			if (this.pongTimer) clearTimeout(this.pongTimer);
 		} else {
 			const { type, data } = socketiparse(e.data as string) as MessagePayload<O, RouterPaths<O>>;

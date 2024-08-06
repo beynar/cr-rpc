@@ -1,4 +1,4 @@
-import { procedure, createServer, durableProcedure, createDurableServer, cors, type InferDurableApi } from 'flarepc';
+import { procedure, createServer, durableProcedure, createDurableServer, cors, type InferDurableApi, InferApiTypes } from 'flarepc';
 import { string, object, optional } from 'valibot';
 import type { DurableObject } from 'cloudflare:workers';
 
@@ -28,10 +28,20 @@ const topicsIn = {
 	message: testProcedure()
 		.input(object({ message: string() }))
 		.handle(({ input, object }) => {
-			return {
-				hello: input.message,
-			};
+			console.log(input);
 		}),
+	test: {
+		test: {
+			test: testProcedure()
+				.input(object({ name: string() }))
+				.handle(({ input, object }) => {
+					console.log(input);
+					object.send('message', {
+						message: input.name,
+					});
+				}),
+		},
+	},
 };
 const topicsOut = {
 	message: testProcedure()
@@ -93,5 +103,6 @@ const server = createServer({
 });
 
 export type Server = typeof server.infer;
+export type API = InferApiTypes<Server>;
 
 export default server;

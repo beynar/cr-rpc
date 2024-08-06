@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api } from '../api';
+	import { api, type API } from '../api';
+
+	let ws = $state<API['TestDurable']['WS']>();
 </script>
 
 <div class="grid bg-slate-200 h-screen grid-cols-2 gap-4 p-10">
@@ -24,16 +26,28 @@
 	>
 		Test a normal procedure on the worker
 	</button>
+	{#if ws}
+		<button
+			class="shadow-md rounded-lg h-fit bg-white p-4"
+			onclick={async () => {
+				ws?.send.test.test.test({ name: 'caca' });
+			}}
+		>
+			send message
+		</button>
+	{/if}
 	<button
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
-			const ws = await api.TestDurable('test').connect({
+			const wes = await api.TestDurable('test').connect({
 				messages: {
 					message: ({ data, ctx }) => {
 						console.log(data);
 					}
 				}
 			});
+			ws = wes;
+			wes.send.test.test.test({ name: 'lkez' });
 		}}
 	>
 		Test connection to websocket

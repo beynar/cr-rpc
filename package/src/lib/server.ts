@@ -54,7 +54,7 @@ export const createRequestEvent = (partialEvent: Partial<RequestEvent>, env: Env
 
 export const createServer = <
 	R extends Router,
-	const O extends Record<
+	O extends Record<
 		string,
 		{
 			prototype: DurableServer;
@@ -81,7 +81,6 @@ export const createServer = <
 		const partialEvent = await createPartialRequestEvent(request, locals, env, ctx);
 		const event = createRequestEvent(partialEvent, env, ctx);
 		let response: Response | undefined;
-		console.log(request);
 
 		$: try {
 			for (let handler of before.concat(cors?.preflight || []) || []) {
@@ -94,7 +93,6 @@ export const createServer = <
 
 				let stub = (env[event.objectName as keyof typeof env] as any).get(id) as DurableObjectStub<DurableServer>;
 
-				console.log(event.isWebSocketConnect);
 				if (event.isWebSocketConnect) {
 					const upgradeHeader = request.headers.get('Upgrade');
 					if (!upgradeHeader || upgradeHeader !== 'websocket') {
@@ -114,7 +112,6 @@ export const createServer = <
 				}
 			}
 		} catch (error) {
-			console.log('error', error);
 			c?.(error);
 			response = handleError(error);
 		}

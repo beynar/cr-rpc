@@ -113,6 +113,34 @@ export type DurableServerDefinition<R extends Router = Router, I extends Router 
 	out?: O;
 };
 
+type IO<R> = R extends Router
+	? {
+			[K in RouterPaths<R>]: {
+				input: InferInputAtPath<R, K>;
+				output: InferOutPutAtPath<R, K>;
+			};
+		}
+	: never;
+type InferWS<O> =
+	O extends DurableServerDefinition<infer R, infer I, infer O>
+		? I extends Router
+			? O extends Router
+				? {
+						WS: WebSocketClient<I, O>;
+						IN: {
+							[K in RouterPaths<I>]: InferOutPutAtPath<I, K>;
+						};
+						OUT: {
+							[K in RouterPaths<O>]: InferInputAtPath<O, K>;
+						};
+					}
+				: never
+			: never
+		: never;
+export type InferApiTypes<S extends Server> = IO<S['router']> & {
+	[K in keyof S['objects']]: IO<Get<S['objects'][K], 'router'>> & InferWS<S['objects'][K]>;
+};
+
 export type InferDurableApi<D extends DurableServer> = DurableServerDefinition<D['router'], D['topicsIn'], D['topicsOut']>;
 
 export type Client<S extends Server> = API<S['router']> & {
@@ -157,4 +185,8 @@ export type InferSchemaOutPutAtPath<R extends Router, P extends RouterPaths<R>> 
 	Get<R, P> extends Handler<any, infer S, any, any> ? (S extends Schema ? SchemaOutput<S> : never) : never;
 
 export type InferOutPutAtPath<R extends Router, P extends RouterPaths<R>> =
-	Get<R, P> extends Handler<infer M, infer S, infer H, infer D> ? (H extends HandleFunction<S, M, D> ? ReturnType<H> : never) : 'never';
+	Get<R, P> extends Handler<infer M, infer S, infer H, infer D>
+		? H extends HandleFunction<S, M, D>
+			? Awaited<ReturnType<H>>
+			: never
+		: 'never';

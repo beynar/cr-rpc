@@ -1,20 +1,9 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Handler } from './procedure';
-import {
-	DurableServer,
-	Env,
-	InferInputAtPath,
-	InferSchemaOutPutAtPath,
-	Locals,
-	MaybePromise,
-	RegisteredParticipant,
-	RequestEvent,
-	Router,
-	RouterPaths,
-} from './types';
+import { Env, InferInputAtPath, Locals, MaybePromise, RegisteredParticipant, RequestEvent, Router, RouterPaths } from './types';
 import { createPartialRequestEvent, createRequestEvent, getHandler } from './server';
 import { parse } from './utils';
-import { socketify } from './deform';
+import { socketify, socketiparse } from './deform';
 import { handleRequest } from './request';
 import { error, FLARERROR, handleError } from './error';
 
@@ -98,13 +87,14 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 			});
 		};
 
-		receive = async <P extends RouterPaths<_IN>>(path: P, input: InferInputAtPath<_IN, P>) => {
+		receive = async (event: MessageEvent) => {
+			const { type, data } = socketiparse(event.data as string);
 			if (!topicsIn) {
 				throw error('SERVICE_UNAVAILABLE');
 			}
 			try {
-				const handler = getHandler(topicsIn, String(path).split('/')) as Handler<any, any, any, any>;
-				const parsedData = await parse(handler?.schema, input);
+				const handler = getHandler(topicsIn, String(type).split('.')) as Handler<any, any, any, any>;
+				const parsedData = await parse(handler?.schema, data);
 				await handler?.call(this.requestEvent, parsedData, this);
 			} catch (error) {
 				// send error somehow
@@ -168,7 +158,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 					if (e.data === 'ping') {
 						server.send('pong');
 					} else {
-						this.onMessage(e);
+						this.receive(e);
 					}
 				});
 
@@ -181,12 +171,6 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 				return handleError(error);
 			}
 		}
-
-		onMessage = (event: MessageEvent) => {
-			if ('receive' in this && typeof this.receive === 'function') {
-				this.receive(event.type as any, event.data as any);
-			}
-		};
 
 		sendPresence = () => {
 			const webSockets: WebSocket[] = [];
