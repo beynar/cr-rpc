@@ -6,6 +6,7 @@
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
 		"build": "tsup && node fixBuildTypes.js",
+		"build-dev": "tsup --watch && node fixBuildTypes.js",
 		"start": "wrangler dev",
 		"test": "vitest --ui"
 	},

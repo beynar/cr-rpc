@@ -3,7 +3,7 @@ import { Handler } from './procedure';
 import { Env, RequestEvent } from './types';
 import { parse } from './utils';
 
-export const handleRequest = async (event: RequestEvent, handler: Handler<any, any, any, any>) => {
+export const handleRequest = async (event: RequestEvent, handler: Handler<any, any, any, any>, object?: any) => {
 	const request = event.request;
 	const url = event.url;
 	const method = event.request.method;
@@ -22,7 +22,7 @@ export const handleRequest = async (event: RequestEvent, handler: Handler<any, a
 				: await request.json();
 
 	if (handler && 'call' in handler) {
-		result = await handler.call(event, parse(handler.schema, requestData));
+		result = await handler.call(event, parse(handler.schema, requestData), object);
 
 		if (result?.constructor.name === 'ReadableStream') {
 			headers['Content-Type'] = 'text/event-stream';

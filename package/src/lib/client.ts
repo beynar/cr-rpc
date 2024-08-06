@@ -1,10 +1,8 @@
-import type { API, Client, MaybePromise, Router, Server } from './types';
-import { tryParse } from './utils';
+import type { Client, MaybePromise, Server } from './types';
 import { deform, form } from './deform';
-import { stringify } from 'neoqs';
-import { boolean } from 'valibot';
 import { createWebSocketConnection } from './websocket';
-type DObject = {
+
+export type DObject = {
 	name?: string;
 	id?: string;
 	call: boolean;
@@ -81,7 +79,7 @@ export const createClient = <S extends Server>(
 	};
 	return createRecursiveProxy(async ({ path, payload, object, callbackFunction }) => {
 		if (object.websocket) {
-			return createWebSocketConnection(payload, endpoint);
+			return createWebSocketConnection(payload, `${endpoint}/${path.join('/')}`, object);
 		}
 		let method = 'POST';
 		const maybeVerb = path[path.length - 1];
@@ -104,10 +102,11 @@ export const createClient = <S extends Server>(
 							input: payload,
 						})
 					: headers,
-				object.call
+				object.call || object.websocket
 					? {
 							'x-flarepc-object-name': object.name,
 							'x-flarepc-object-id': object.id,
+							'x-flarepc-websocket': object.websocket,
 						}
 					: {},
 			),

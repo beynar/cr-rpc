@@ -1,36 +1,12 @@
-import { procedure, createServer, durableProcedure, Router, createHandler, RouterPaths, createDurableRouter } from './lib';
+import { procedure, createServer, durableProcedure, Router, RouterPaths, createDurableServer } from './lib';
 import { string, object, map, BaseSchema, boolean, instance, number, undefined_, null_, date, set, optional } from 'valibot';
-import { InferDurableServer, createReceiver, createSender, DurableRouter } from './lib';
-interface Env {
-	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
-	MY_KV_NAMESPACE: KVNamespace;
-	//
-	// Example binding to Durable Object. Learn more at https://developers.cloudflare.com/workers/runtime-apis/durable-objects/
-	TestDurable: DurableObjectNamespace;
-	//
-	// Example binding to R2. Learn more at https://developers.cloudflare.com/workers/runtime-apis/r2/
-	MY_BUCKET: R2Bucket;
-	//
-	// Example binding to a Service. Learn more at https://developers.cloudflare.com/workers/runtime-apis/service-bindings/
-	MY_SERVICE: Fetcher;
-	//
-	// Example binding to a Queue. Learn more at https://developers.cloudflare.com/queues/javascript-apis/
-	MY_QUEUE: Queue;
-
-	VECTORIZE: VectorizeIndex;
-}
+import { createReceiver, createSender } from './lib';
+interface Env {}
 
 const locals = {
 	prod: true,
 };
 type Locals = typeof locals;
-declare module 'flarepc' {
-	interface Register {
-		Env: Env;
-		Router: AppRouter;
-		Locals: Locals;
-	}
-}
 
 const router = {
 	text: procedure().handle(async ({ event }) => {
@@ -228,16 +204,13 @@ const durableRouter = {
 		},
 	},
 };
-export class TestDurable extends createDurableRouter() {
+export class TestDurable extends createDurableServer() {
 	send = createSender(topicsOut, this);
 	receive = createReceiver(topicsIn, this);
-	handle = createHandler(router, this);
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env, durableRouter, topicsIn, topicsOut);
 	}
 }
-
-type TestDurableServer = InferDurableServer<TestDurable>;
 
 export type AppRouter = typeof router;
 
@@ -252,7 +225,11 @@ const server = createServer({
 export type Server = {
 	router: AppRouter;
 	objects: {
-		TestDurable: TestDurableServer;
+		TestDurable: {
+			router: typeof router;
+			in: typeof topicsIn;
+			out: typeof topicsOut;
+		};
 	};
 };
 export default server;

@@ -1,8 +1,6 @@
-import { DurableRouter } from './durable';
-import { HandleFunction, Middleware, RequestEvent, Schema, SchemaInput } from './types';
+import { DurableServer, HandleFunction, Middleware, RequestEvent, Schema, SchemaInput } from './types';
 import { useMiddlewares } from './utils';
-
-const createHandler = <S extends Schema | undefined, M extends Middleware[], D extends DurableRouter | undefined = undefined>(
+const createHandler = <S extends Schema | undefined, M extends Middleware[], D extends DurableServer | undefined = undefined>(
 	middlewares: M,
 	schema?: S,
 ) => {
@@ -11,7 +9,7 @@ const createHandler = <S extends Schema | undefined, M extends Middleware[], D e
 	};
 };
 
-export const procedure = <M extends Middleware[], D extends DurableRouter | undefined = undefined>(...middlewares: M) => {
+export const procedure = <M extends Middleware[], D extends DurableServer | undefined = undefined>(...middlewares: M) => {
 	return {
 		handle: <H extends HandleFunction<undefined, M, D>>(handleFunction: H) => {
 			return createHandler<undefined, M, D>(middlewares, undefined)(handleFunction);
@@ -23,7 +21,7 @@ export const procedure = <M extends Middleware[], D extends DurableRouter | unde
 		},
 	};
 };
-export const durableProcedure = <D extends DurableRouter>() => {
+export const durableProcedure = <D extends DurableServer>() => {
 	return <M extends Middleware[]>(...middlewares: M) => {
 		return procedure<M, D>(...middlewares);
 	};
@@ -32,7 +30,7 @@ export class Handler<
 	M extends Middleware[],
 	S extends Schema | undefined,
 	const H extends HandleFunction<S, M, D>,
-	D extends DurableRouter | undefined = undefined,
+	D extends DurableServer | undefined = undefined,
 > {
 	middlewares: M;
 	schema: S;

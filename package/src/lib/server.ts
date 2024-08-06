@@ -1,11 +1,9 @@
-import { RequestEvent, Router, Env, Locals, RegisteredRouter, API, MaybePromise, Server } from './types';
+import { RequestEvent, Router, Env, Locals, MaybePromise, DurableServer } from './types';
 import { createCookies } from './cookies';
 import { CorsPair } from './cors';
-import { deform, form } from './deform';
 import { Handler } from './procedure';
 import { error, handleError } from './error';
 import { handleRequest } from './request';
-import { DurableRouter } from './durable';
 
 export const getHandler = (router: Router, path: string[]) => {
 	type H = Router | Handler<any, any, any> | undefined;
@@ -24,19 +22,22 @@ export const createPartialRequestEvent = async (
 ): Promise<Partial<RequestEvent>> => {
 	const url = new URL(request.url);
 	let path = url.pathname.split('/').filter(Boolean);
-	const objectId = request.headers.get('x-flarepc-object-id') || null;
-	const objectName = request.headers.get('x-flarepc-object-name') || null;
+	let objectId = request.headers.get('x-flarepc-object-id') || url.searchParams.get('id');
+	let objectName = request.headers.get('x-flarepc-object-name') || url.searchParams.get('object');
+	const isWebSocketConnect = !!objectId && !!objectName && url.pathname.endsWith('/connect');
 	const method = request.method;
-	if (method !== 'POST') {
+	if (method !== 'POST' && !isWebSocketConnect) {
 		path.push(method.toLocaleLowerCase());
 	}
 	if (objectId && objectName) {
 		path = path.slice(1);
 	}
+
 	return Object.assign(
 		{},
 		{
 			path,
+			isWebSocketConnect,
 			locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals,
 			objectId,
 			objectName,
@@ -51,7 +52,7 @@ export const createRequestEvent = (partialEvent: Partial<RequestEvent>, env: Env
 	return Object.assign({}, ctx, partialEvent, env) as RequestEvent;
 };
 
-export const createServer = <R extends Router, O extends Record<string, { prototype: DurableRouter }>>({
+export const createServer = <R extends Router, O extends Record<string, { prototype: DurableServer }>>({
 	router,
 	before = [],
 	after = [],
@@ -82,9 +83,18 @@ export const createServer = <R extends Router, O extends Record<string, { protot
 			if (objectClass) {
 				let id = (env[event.objectName as keyof typeof env] as any).idFromName(event.objectId);
 
-				let stub = (env[event.objectName as keyof typeof env] as any).get(id) as DurableObjectStub<DurableRouter>;
+				let stub = (env[event.objectName as keyof typeof env] as any).get(id) as DurableObjectStub<DurableServer>;
 
-				response = await stub.handleRpc(request, locals);
+				if (event.isWebSocketConnect) {
+					const upgradeHeader = request.headers.get('Upgrade');
+					if (!upgradeHeader || upgradeHeader !== 'websocket') {
+						return new Response('Durable Object expected Upgrade: websocket', { status: 426 });
+					}
+					await stub.handleWebSocket(request, locals, event.objectId as string);
+					return stub.fetch(request);
+				} else {
+					response = await stub.handleRpc(request, locals);
+				}
 			} else {
 				const handler = getHandler(router, event.path);
 				if (!handler) {
@@ -94,7 +104,7 @@ export const createServer = <R extends Router, O extends Record<string, { protot
 				}
 			}
 		} catch (error) {
-			console.log({ error });
+			console.log('error', error);
 			c?.(error);
 			response = handleError(error);
 		}

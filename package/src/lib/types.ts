@@ -3,8 +3,7 @@ import type { Input as VInput, Output as VOutput, BaseSchema as VSchema } from '
 import type { Schema as ZSchema, infer as ZOutput, input as ZInput } from 'zod';
 import { Handler } from './procedure';
 import { ConnectOptions, WebSocketClient } from './websocket';
-import { DurableObject } from 'cloudflare:workers';
-import { DurableRouter } from './durable';
+import { createDurableServer } from './durable';
 
 export interface Register {}
 
@@ -31,10 +30,11 @@ export type RegisteredRouter = Register extends {
 export type RegisteredObjects = Register extends {
 	object: infer _Objects;
 }
-	? _Objects extends Record<string, DurableObject>
+	? _Objects extends Record<string, DurableServer>
 		? _Objects
 		: never
 	: never;
+
 export type RegisteredParticipant = Register extends {
 	Participant: infer _Participant;
 }
@@ -47,6 +47,7 @@ type Participant = {
 	id: string;
 } & Record<string, any>;
 
+export type DurableServer = ReturnType<typeof createDurableServer>['prototype'];
 export type Schema = ZSchema | VSchema;
 export type SchemaInput<S extends Schema> = S extends ZSchema ? ZInput<S> : S extends VSchema ? VInput<S> : 'never';
 export type SchemaOutput<S extends Schema> = S extends ZSchema ? ZOutput<S> : S extends VSchema ? VOutput<S> : 'never';
@@ -62,6 +63,7 @@ export type StreamCallback<C = string> = {
 export type Middleware<T = any> = (event: RequestEvent) => MaybePromise<T>;
 
 export type RequestEvent = {
+	isWebSocketConnect: boolean;
 	objectId: string | null;
 	objectName: string | null;
 	path: string[];
@@ -76,16 +78,16 @@ export type RequestEvent = {
 export type HandleFunction<
 	S extends Schema | undefined,
 	M extends Middleware[] | undefined,
-	D extends DurableObject | undefined = undefined,
+	D extends DurableServer | undefined = undefined,
 > = (payload: HandlePayload<S, M, D>) => MaybePromise<any>;
 
 export type HandlePayload<
 	S extends Schema | undefined,
 	M extends Middleware[] | undefined,
-	D extends DurableObject | undefined = undefined,
+	D extends DurableServer | undefined = undefined,
 > = (S extends Schema ? { event: RequestEvent; input: SchemaInput<S> } : { event: RequestEvent }) & {
 	ctx: ReturnOfMiddlewares<M>;
-} & (D extends DurableObject ? { object: D } : {});
+} & (D extends DurableServer ? { object: D } : {});
 
 export type ReturnOfMiddlewares<Use extends Middleware[] | undefined, PreviousData = unknown> = Use extends Middleware[]
 	? Use extends [infer Head, ...infer Tail]
@@ -103,24 +105,20 @@ export type Router = {
 
 export type Server = {
 	router: Router;
-	objects?: Record<string, DurableServer>;
+	objects?: Record<string, DurableServerDefinition>;
 };
-export type DurableServer<R extends Router = Router, I extends Router = Router, O extends Router = Router> = {
+export type DurableServerDefinition<R extends Router = Router, I extends Router = Router, O extends Router = Router> = {
 	router?: R;
 	in?: I;
 	out?: O;
 };
 
-export type InferDurableServer<D extends DurableRouter> = {
-	router: D['router'];
-	in?: Get<D, 'topics.in'>;
-	out?: Get<D, 'topics.out'>;
-};
+export type InferDurableApi<D extends DurableServer> = DurableServerDefinition<D['router'], D['topicsIn'], D['topicsOut']>;
 
 export type Client<S extends Server> = API<S['router']> & {
 	[K in keyof S['objects']]: (
 		id: string,
-	) => S['objects'][K] extends DurableServer<infer R, infer I, infer O>
+	) => S['objects'][K] extends DurableServerDefinition<infer R, infer I, infer O>
 		? API<R> & { connect: (options: ConnectOptions<O>) => Promise<WebSocketClient<I, O>> }
 		: never;
 };
