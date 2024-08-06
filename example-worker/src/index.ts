@@ -92,11 +92,6 @@ const server = createServer({
 	},
 });
 
-export type Server = {
-	router: AppRouter;
-	objects: {
-		TestDurable: InferDurableApi<TestDurable>;
-	};
-};
+export type Server = typeof server.infer;
 
 export default server;

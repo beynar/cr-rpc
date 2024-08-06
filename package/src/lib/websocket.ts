@@ -184,7 +184,7 @@ export class WebSocketClient<I extends Router, O extends Router> {
 		}
 	};
 	constructor(opts: ConnectOptions<O>, url: string, object: DObject) {
-		this.url = url;
+		this.url = url.replace('http://', 'ws://').replace('https://', 'wss://');
 		this.object = object;
 		this.opts = opts;
 	}

@@ -8,15 +8,25 @@ export type DObject = {
 	call: boolean;
 	websocket: boolean;
 };
+
+const defaultObject = () => ({
+	name: undefined,
+	id: undefined,
+	call: false,
+	websocket: false,
+});
 export const createRecursiveProxy = (
 	callback: (opts: { path: string[]; payload: any; object: DObject; callbackFunction: any }) => unknown,
-	object: DObject,
+	object: DObject = defaultObject(),
 	path: string[] = [],
 	payload: unknown[] = [],
 	callbackFunction: any = null,
 ) => {
 	const proxy: unknown = new Proxy(() => {}, {
 		get(_obj, key) {
+			if (path.length === 0) {
+				object = defaultObject();
+			}
 			if (typeof key !== 'string') return undefined;
 			if (key === 'then') {
 				// mean that it's the last path and the api is effectively called
@@ -71,12 +81,6 @@ export const createClient = <S extends Server>(
 		onError: () => {},
 	},
 ) => {
-	let object = {
-		name: undefined,
-		id: undefined,
-		call: false,
-		websocket: false,
-	};
 	return createRecursiveProxy(async ({ path, payload, object, callbackFunction }) => {
 		if (object.websocket) {
 			return createWebSocketConnection(payload, `${endpoint}/${path.join('/')}`, object);
@@ -149,5 +153,5 @@ export const createClient = <S extends Server>(
 				}
 			}
 		});
-	}, object) as Client<S>;
+	}) as Client<S>;
 };

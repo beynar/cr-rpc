@@ -18,6 +18,15 @@
 	<button
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
+			const result = await api.text();
+			console.log(result);
+		}}
+	>
+		Test a normal procedure on the worker
+	</button>
+	<button
+		class="shadow-md rounded-lg h-fit bg-white p-4"
+		onclick={async () => {
 			const ws = await api.TestDurable('test').connect({
 				messages: {
 					message: ({ data, ctx }) => {
