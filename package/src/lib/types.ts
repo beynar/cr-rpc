@@ -1,6 +1,7 @@
 import type { Cookies } from './cookies';
 import type { Input as VInput, Output as VOutput, BaseSchema as VSchema } from 'valibot';
 import type { Schema as ZSchema, infer as ZOutput, input as ZInput } from 'zod';
+import { Type as ASchema } from 'arktype';
 import { Handler } from './procedure';
 import { ConnectOptions, WebSocketClient } from './websocket';
 import { createDurableServer } from './durable';
@@ -19,6 +20,12 @@ export type Locals = Register extends {
 	? _Locals
 	: {};
 
+export type SessionData = Register extends {
+	SessionData: infer _SessionData;
+}
+	? _SessionData
+	: {};
+
 export type RegisteredRouter = Register extends {
 	Router: infer _Router;
 }
@@ -35,22 +42,37 @@ export type RegisteredObjects = Register extends {
 		: never
 	: never;
 
-export type RegisteredParticipant = Register extends {
+export type Participant = Register extends {
 	Participant: infer _Participant;
 }
-	? _Participant extends Participant
+	? _Participant extends Record<string, any> & {
+			id: string;
+		}
 		? _Participant
-		: never
-	: Participant;
-
-type Participant = {
-	id: string;
-} & Record<string, any>;
+		: {
+				id: string;
+			}
+	: {
+			id: string;
+		};
 
 export type DurableServer = ReturnType<typeof createDurableServer>['prototype'];
-export type Schema = ZSchema | VSchema;
-export type SchemaInput<S extends Schema> = S extends ZSchema ? ZInput<S> : S extends VSchema ? VInput<S> : 'never';
-export type SchemaOutput<S extends Schema> = S extends ZSchema ? ZOutput<S> : S extends VSchema ? VOutput<S> : 'never';
+
+export type Schema = ZSchema | VSchema | ASchema;
+export type SchemaInput<S extends Schema> = S extends ASchema
+	? S['inferIn']
+	: S extends ZSchema
+		? ZInput<S>
+		: S extends VSchema
+			? VInput<S>
+			: never;
+export type SchemaOutput<S extends Schema> = S extends ASchema
+	? S['infer']
+	: S extends ZSchema
+		? ZOutput<S>
+		: S extends VSchema
+			? VOutput<S>
+			: never;
 
 export type MaybePromise<T> = T | Promise<T>;
 
@@ -78,19 +100,48 @@ export type RequestEvent = {
 
 export type Session = {
 	id: string;
-	participant: RegisteredParticipant;
+	participant: Participant;
 	connected: boolean;
 	createdAt: number;
-	meta?: CfProperties;
-	cookies: Map<string, string>;
+	data: SessionData;
 };
+
+export type MessagePayload<O extends Router, T extends RouterPaths<O>> = {
+	type: T;
+	data: InferSchemaOutPutAtPath<O, T>;
+	ctx: InferOutPutAtPath<O, T>;
+};
+
+export type SingletonPaths<R extends Router, P extends RouterPaths<R>> = P extends `${infer START}.${infer REST}` ? never : P;
+type NestedPaths<R extends Router, P extends RouterPaths<R>> = P extends `${infer START}.${infer REST}` ? P : never;
+
+export type MessageCallback<O extends Router, K extends RouterPaths<O>> = (payload: {
+	data: InferSchemaOutPutAtPath<O, K>;
+	ctx: InferOutPutAtPath<O, K>;
+}) => void;
+
+export type MessageHandlers<O extends Router> = Partial<
+	{
+		[K in SingletonPaths<O, RouterPaths<O>>]: MessageCallback<O, K>;
+	} & UnionToIntersection<PathToNestedObject<O, NestedPaths<O, RouterPaths<O>>>>
+>;
+
+export type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
+
+export type PathToNestedObject<O extends Router, P extends string, BasePath extends string = ''> = P extends `${infer START}.${infer REST}`
+	? Partial<{ [K in START]: PathToNestedObject<O, REST, BasePath extends '' ? `${K}` : `${BasePath}.${K}`> }>
+	: Partial<{
+			[K in P]: `${BasePath}.${K}` extends RouterPaths<O> ? MessageCallback<O, `${BasePath}.${K}`> : unknown;
+		}>;
 
 export type DurableProcedureType = 'in' | 'out' | 'router';
 
 export type DurableOptions = {
-	getParticipant?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<Session>;
+	getParticipant?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<Participant>;
+	getSessionData?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<SessionData>;
 	acceptConnection?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<boolean>;
-	onError?: (error: unknown) => void;
+	onError?: (payload: { error: unknown; ws?: WebSocket; session?: Session; message?: string; object: DurableServer }) => MaybePromise<void>;
+	onMessage?: (payload: { ws: WebSocket; session: Session; message: string; object: DurableServer }) => MaybePromise<void>;
 };
 export type HandleFunction<
 	S extends Schema | undefined,

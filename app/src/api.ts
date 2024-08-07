@@ -1,17 +1,17 @@
 import { createClient } from 'flarepc/client';
-import type { Server, API, OUT } from 'example-worker/src/index';
-import type {
-	Get,
-	Handler,
-	InferOutPutAtPath,
-	Router,
-	RouterPaths,
-	Schema,
-	SchemaOutput
-} from 'flarepc';
+import type { Server, API } from 'example-worker/src/index';
 
 export const api = createClient<Server>({
 	endpoint: 'http://localhost:8080'
 });
+
+declare module 'flarepc' {
+	interface Register {
+		Participant: {
+			id: string;
+			name: string;
+		};
+	}
+}
 
 export { type API };

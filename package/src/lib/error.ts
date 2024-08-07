@@ -1,3 +1,5 @@
+import { tryParse } from './utils';
+
 const httpErrorMap = {
 	BAD_REQUEST: { code: 400, message: 'Bad Request' },
 	UNAUTHORIZED: { code: 401, message: 'Unauthorized' },
@@ -34,25 +36,36 @@ export const error = (code: ERROR, message?: string) => {
 	throw new FLARERROR(code, message);
 };
 
-export const handleError = (error: unknown) => {
+export const getErrorAsJson = (
+	error: unknown,
+): {
+	body: string;
+	status: number;
+	statusText: string;
+} => {
 	if (error instanceof FLARERROR) {
-		return new Response(
-			JSON.stringify({
-				error: {
-					message: error.message,
-				},
+		return {
+			body: JSON.stringify({
+				message: error.message,
 			}),
-			{
-				status: httpErrorMap[error.code].code,
-				statusText: error.message,
-			},
-		);
+			status: httpErrorMap[error.code].code,
+			statusText: httpErrorMap[error.code].message,
+		};
 	} else {
-		return new Response(JSON.stringify(error, Object.getOwnPropertyNames(error)), {
+		return {
+			body: JSON.stringify(error, Object.getOwnPropertyNames(error)),
 			// @ts-ignore
 			status: error.code || 500,
 			// @ts-ignore
-			statusText: error.message || 'Internal Server Error',
-		});
+			statusText: tryParse(error.message) || 'Internal Server Error',
+		};
 	}
+};
+
+export const handleError = (error: unknown) => {
+	const { body, status, statusText } = getErrorAsJson(error);
+	return new Response(body, {
+		status,
+		statusText,
+	});
 };

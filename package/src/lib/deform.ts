@@ -1,5 +1,4 @@
 import { stringify, parse } from 'devalue';
-import { Cookies } from './cookies';
 import { Session } from './types';
 const url = {
 	stringify: (value: any) => {
@@ -50,15 +49,9 @@ export const deform = (formData: FormData) => {
 };
 
 export const serializeAttachment = (ws: WebSocket, value: Session) => {
-	const attachment = stringify(value, {
-		URL: url.stringify,
-	});
-	ws.serializeAttachment(attachment);
+	ws.serializeAttachment(socketify(value));
 };
 
 export const deserializeAttachment = (ws: WebSocket): Session => {
-	const attachment = parse(ws.deserializeAttachment(), {
-		URL: url.parse,
-	});
-	return attachment as Session;
+	return socketiparse(ws.deserializeAttachment()) as Session;
 };

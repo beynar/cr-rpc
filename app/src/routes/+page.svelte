@@ -1,7 +1,36 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { api, type API } from '../api';
 
 	let ws = $state<API['TestDurable']['ws']>();
+
+	onMount(async () => {
+		const wes = await api.TestDurable('test').connect({
+			dedupeConnection: true,
+			onError(error) {
+				console.log(error);
+			},
+			onPresence: (data) => {
+				console.log('presence', data, 'helleaeazlea');
+			},
+			handlers: {
+				message: ({ data, ctx }) => {
+					console.log(data);
+				},
+
+				test: {
+					test: ({ data, ctx }) => {
+						console.log(data);
+					},
+					test2: ({ data, ctx }) => {
+						console.log(data);
+					}
+				}
+			}
+		});
+		ws = wes;
+		wes.send.test.test.test({ name: 'lkez' });
+	});
 </script>
 
 <div class="grid bg-slate-200 h-screen grid-cols-2 gap-4 p-10">
@@ -29,37 +58,14 @@
 		<button
 			class="shadow-md rounded-lg h-fit bg-white p-4"
 			onclick={async () => {
-				ws?.send.noInput();
+				ws?.send.ark({
+					name: 'world',
+					platform: 'android',
+					versions: ['1', '2', '3']
+				});
 			}}
 		>
 			send message
 		</button>
 	{/if}
-	<button
-		class="shadow-md rounded-lg h-fit bg-white p-4"
-		onclick={async () => {
-			const wes = await api.TestDurable('test').connect({
-				onPresence: (data) => {
-					console.log('presence', data);
-				},
-				handlers: {
-					message: ({ data, ctx }) => {
-						console.log(data);
-					},
-					test: {
-						test: ({ data, ctx }) => {
-							console.log(data);
-						},
-						test2: ({ data, ctx }) => {
-							console.log(data);
-						}
-					}
-				}
-			});
-			ws = wes;
-			wes.send.test.test.test({ name: 'lkez' });
-		}}
-	>
-		Test connection to websocket
-	</button>
 </div>

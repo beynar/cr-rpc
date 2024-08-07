@@ -21,12 +21,12 @@ export const parse = <S extends Schema | undefined>(schema: S, data: any) => {
 		return undefined;
 	} else {
 		// @ts-ignore
-		const parseResult = schema.safeParse?.(data) || schema._parse?.(data);
-		const errors = parseResult?.error?.issues || parseResult.issues;
+		const parseResult = schema.safeParse?.(data) || schema._parse?.(data) || schema(data);
+		const errors = parseResult?.error?.issues || parseResult.issues || parseResult.summary;
 		if (errors) {
 			throw new Error(JSON.stringify(errors));
 		}
-		return parseResult.data || parseResult.output;
+		return parseResult.data || parseResult.output || parseResult;
 	}
 };
 

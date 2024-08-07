@@ -78,6 +78,9 @@ importers:
 
   example-worker:
     dependencies:
+      arktype:
+        specifier: 2.0.0-beta.2
+        version: 2.0.0-beta.2
       flarepc:
         specifier: workspace:*
         version: link:../package
@@ -169,11 +172,9 @@ packages:
     resolution: {integrity: sha512-3GyWVptFzmUZTBAwobiuk2Xa1wXeWNOOaHWcYl3pYTTdl5QNuB/53JnHXL0NrFW4Yvv7cgTcRsZQby7pNAeeJA==}
     dependencies:
       '@ark/util': 0.1.2
-    dev: true
 
   /@ark/util@0.1.2:
     resolution: {integrity: sha512-JhcPZhF8T8Eb9UxJqh3X8tOwZpnuW89azKlPnRhFXymhy/wBFPRC9+J+Vu+iUc/kplW3uloZb9n5R3EVVWUBgw==}
-    dev: true
 
   /@cloudflare/kv-asset-handler@0.3.4:
     resolution: {integrity: sha512-YLPHc8yASwjNkmcDMQMY35yiWjoKAKnhUbPRszBRS0YgH+IXtsMp61j+yTcnCE3oO2DgP0U3iejLC8FTtKDC8Q==}
@@ -1670,7 +1671,6 @@ packages:
     dependencies:
       '@ark/schema': 0.2.2
       '@ark/util': 0.1.2
-    dev: true
 
   /array-union@2.1.0:
     resolution: {integrity: sha512-HGyxoOTYUyCM6stUe6EJgnd4EoewAI7zMdfqO+kGjnlZmBDz/cR5pf8r/cR4Wq60sL/p0IkcjUEEPwS3GFrIyw==}

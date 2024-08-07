@@ -11,6 +11,14 @@ import {
 import { string, object, optional } from 'valibot';
 import type { DurableObject } from 'cloudflare:workers';
 
+import { type, Out, Type } from 'arktype';
+
+const schema = type({
+	name: 'string',
+	platform: "'android' | 'ios'",
+	'versions?': '(number | string)[]',
+});
+
 interface Env {
 	TestDurable: DurableObject;
 }
@@ -45,6 +53,12 @@ const topicsIn = {
 		console.log('here');
 		object.send({ to: event.session?.participant.id }).message({ message: 'hello prout' });
 	}),
+	ark: inProcedure()
+		.input(schema)
+		.handle(({ event, input, object }) => {
+			console.log(input);
+			object.send({ to: event.session?.participant.id }).message({ message: JSON.stringify(input) });
+		}),
 	test: {
 		test: {
 			test: inProcedure()
@@ -117,5 +131,4 @@ const server = createServer({
 
 export type Server = typeof server.infer;
 export type API = InferApiTypes<Server>;
-export type OUT = typeof topicsOut;
 export default server;

@@ -1,43 +1,24 @@
 import type { DObject } from './client';
 import { socketify, socketiparse } from './deform';
-
-import { InferOutPutAtPath, InferSchemaOutPutAtPath, RegisteredParticipant, Router, RouterPaths } from './types';
+import { MessageHandlers, MessagePayload, Participant, Router, RouterPaths } from './types';
 import { WSAPI, createRecursiveProxy } from './wsProxy';
 
-type MessagePayload<O extends Router, T extends RouterPaths<O>> = {
-	type: T;
-	data: InferSchemaOutPutAtPath<O, T>;
-	ctx: InferOutPutAtPath<O, T>;
-};
-
-type SingletonPaths<R extends Router, P extends RouterPaths<R>> = P extends `${infer START}.${infer REST}` ? never : P;
-type NestedPaths<R extends Router, P extends RouterPaths<R>> = P extends `${infer START}.${infer REST}` ? P : never;
-
-type MessageCallback<O extends Router, K extends RouterPaths<O>> = (payload: {
-	data: InferSchemaOutPutAtPath<O, K>;
-	ctx: InferOutPutAtPath<O, K>;
-}) => void;
-
-type MessageHandlers<O extends Router> = Partial<
-	{
-		[K in SingletonPaths<O, RouterPaths<O>>]: MessageCallback<O, K>;
-	} & UnionToIntersection<PathToNestedObject<O, NestedPaths<O, RouterPaths<O>>>>
->;
-
-type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
-
-type PathToNestedObject<O extends Router, P extends string, BasePath extends string = ''> = P extends `${infer START}.${infer REST}`
-	? Partial<{ [K in START]: PathToNestedObject<O, REST, BasePath extends '' ? `${K}` : `${BasePath}.${K}`> }>
-	: Partial<{
-			[K in P]: `${BasePath}.${K}` extends RouterPaths<O> ? MessageCallback<O, `${BasePath}.${K}`> : unknown;
-		}>;
+export type WebSocketState = 'RECONNECTING' | 'CONNECTED' | 'CLOSED';
 
 export type ConnectOptions<O extends Router> = {
-	participant?: RegisteredParticipant;
+	participant?: Participant;
 	onOpen?: () => void;
 	onClose?: () => void;
-	onPresence?: (presence: RegisteredParticipant[]) => void;
+	onPresence?: (presence: Participant[]) => void;
+	onStateChange?: (state: WebSocketState) => void;
+	onError?: (error: { body: string; status: number; statusText: string }) => void;
+	onReconnectionFailed?: () => void;
 	handlers: MessageHandlers<O>;
+	dedupeConnection?: boolean;
+	autoReconnectInterval?: number;
+	maxReconnectAttempts?: number;
+	pingInterval?: number;
+	pongTimeout?: number;
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,7 +27,6 @@ export class WebSocketClient<I extends Router, O extends Router> {
 	protected lastHeartBeatTs?: Date;
 	private autoReconnectInterval = 1000; // ms
 	private maxReconnectAttempts = 7;
-	private object: DObject;
 	private url: string;
 	private opts: ConnectOptions<O>;
 	private sendQueue: string[] = [];
@@ -74,13 +54,13 @@ export class WebSocketClient<I extends Router, O extends Router> {
 
 	ws: WebSocket | null = null;
 
-	state: 'CONNECTED' | 'CLOSED' | 'RECONNECTING' = 'CLOSED';
-	presence: RegisteredParticipant[] = [];
+	state: WebSocketState = 'CLOSED';
+	presence: Participant[] = [];
 
 	destroy = () => {
 		this.ws?.close();
 		this.abortController?.abort();
-		this.state = 'CLOSED';
+		this.setState('CLOSED');
 	};
 
 	send = createRecursiveProxy(async ({ type, data }) => {
@@ -95,8 +75,9 @@ export class WebSocketClient<I extends Router, O extends Router> {
 	private reconnect = async () => {
 		if (this.state === 'RECONNECTING') return;
 		this.ws = null;
-		this.state = 'RECONNECTING';
+		this.setState('RECONNECTING');
 		let attempts = 0;
+		// @ts-ignore
 		while (this.state === 'RECONNECTING' && attempts < this.maxReconnectAttempts) {
 			await wait(this.autoReconnectInterval * Math.pow(2, attempts));
 			try {
@@ -108,33 +89,29 @@ export class WebSocketClient<I extends Router, O extends Router> {
 		}
 		if (attempts === this.maxReconnectAttempts) {
 			console.log(`closing after ${attempts} attempts`);
-
+			this.opts.onReconnectionFailed?.();
 			this.destroy();
 		}
 	};
-
+	private setState = <S extends WebSocketState>(state: S) => {
+		if (this.state !== state) {
+			this.state = state;
+			this.opts.onStateChange?.(state);
+		}
+	};
 	open = () => {
 		return new Promise((resolve, reject) => {
-			const endpoint = new URL(this.url);
-			const searchParams = new URLSearchParams({
-				id: this.object.id!,
-				object: this.object.name!,
-			});
-			if (this.opts.participant) {
-				searchParams.set('participant', JSON.stringify(this.opts.participant));
-			}
-			endpoint.search = searchParams.toString();
 			this.abortController?.abort();
 			this.abortController = new AbortController();
 			const signal = {
 				signal: this.abortController.signal,
 			};
-			this.ws = new WebSocket(endpoint.toString());
+			this.ws = new WebSocket(this.url);
 
 			this.ws.addEventListener(
 				'open',
 				() => {
-					this.state = 'CONNECTED';
+					this.setState('CONNECTED');
 					while (this.sendQueue.length > 0) {
 						const data = this.sendQueue.pop()!;
 						this.ws!.send(data);
@@ -157,7 +134,7 @@ export class WebSocketClient<I extends Router, O extends Router> {
 					}
 					if (this.state === 'CONNECTED') {
 						// only change state if it's not already closed or reconnecting
-						this.state = 'CLOSED';
+						this.setState('CLOSED');
 					}
 
 					this.opts.onClose?.();
@@ -178,7 +155,7 @@ export class WebSocketClient<I extends Router, O extends Router> {
 					}
 					if (this.state === 'CONNECTED') {
 						// only change state if it's not already closed or reconnecting
-						this.state = 'CLOSED';
+						this.setState('CLOSED');
 					}
 					this.stopPingPong();
 					reject(e);
@@ -195,8 +172,10 @@ export class WebSocketClient<I extends Router, O extends Router> {
 		} else {
 			const { type, data } = socketiparse(e.data as string) as MessagePayload<O, RouterPaths<O>>;
 			if (type === 'presence') {
-				this.presence = data as RegisteredParticipant[];
+				this.presence = data as Participant[];
 				this.opts.onPresence?.(this.presence);
+			} else if (type === 'error') {
+				this.opts.onError?.(data);
 			} else {
 				const path = (type as string).split('.');
 				let handler = this.opts.handlers as any;
@@ -210,19 +189,43 @@ export class WebSocketClient<I extends Router, O extends Router> {
 			}
 		}
 	};
-	constructor(opts: ConnectOptions<O>, url: string, object: DObject) {
-		this.url = url.replace('http://', 'ws://').replace('https://', 'wss://');
-		this.object = object;
+	constructor(opts: ConnectOptions<O>, url: string) {
+		this.url = url;
 		this.opts = opts;
+		this.autoReconnectInterval = opts.autoReconnectInterval || 1000;
+		this.maxReconnectAttempts = opts.maxReconnectAttempts || 7;
+		this.pingInterval = opts.pingInterval || 10000;
+		this.pongTimeout = opts.pongTimeout || 10000;
+
+		(globalThis as any).addEventListener('beforeunload', this.destroy);
+		(globalThis as any).__flarews.set(this.url, this);
 	}
 }
 
 export const createWebSocketConnection = async <I extends Router, O extends Router>(
-	ops: ConnectOptions<O>,
+	opts: ConnectOptions<O>,
 	url: string,
 	object: DObject,
 ) => {
-	const client = new WebSocketClient<I, O>(ops, url, object);
-	await client.open();
-	return client;
+	const endpoint = new URL(url);
+	const searchParams = new URLSearchParams({
+		id: object.id!,
+		object: object.name!,
+	});
+	if (opts.participant) {
+		searchParams.set('participant', JSON.stringify(opts.participant));
+	}
+	endpoint.search = searchParams.toString();
+	const stringifyEndpoint = endpoint.toString();
+
+	if (!(globalThis as any).__flarews) {
+		(globalThis as any).__flarews = new Map();
+	}
+	if ((globalThis as any).__flarews.has(stringifyEndpoint) && opts.dedupeConnection !== false) {
+		return (globalThis as any).__flarews.get(stringifyEndpoint) as WebSocketClient<I, O>;
+	} else {
+		const client = new WebSocketClient<I, O>(opts, stringifyEndpoint);
+		await client.open();
+		return client;
+	}
 };

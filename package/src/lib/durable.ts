@@ -1,13 +1,12 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Handler } from './procedure';
-import { DurableOptions, DurableRequestEvent, Env, RegisteredParticipant, Router, Session } from './types';
+import { DurableOptions, DurableRequestEvent, Env, Participant, Router, Session } from './types';
 import { getHandler } from './server';
 import { deserializeAttachment, serializeAttachment, socketify, socketiparse } from './deform';
 import { createDurableRequestEvent, handleRequest } from './request';
-import { error, FLARERROR, handleError } from './error';
+import { error, FLARERROR, getErrorAsJson, handleError } from './error';
 import { WSAPI, createRecursiveProxy } from './wsProxy';
 import { parse } from './utils';
-import { Cookies } from './cookies';
 
 type SendOptions = {
 	to?: 'ALL' | (string & {}) | (string[] & {});
@@ -91,26 +90,30 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 		}
 
 		async fetch(request: Request) {
+			let session: Session | undefined = undefined;
+			let ws: WebSocket | undefined = undefined;
 			try {
 				const [client, server] = Object.values(new WebSocketPair());
+				ws = server;
 				const event = createDurableRequestEvent(request);
 				const url = new URL(request.url);
 				const participant = url.searchParams.get('participant');
 				const searchParamsParticipant = participant ? JSON.parse(participant) : { id: crypto.randomUUID() };
+
+				const accepted = (await opts?.acceptConnection?.({ event, object: this })) || true;
+				if (!accepted) {
+					throw error('UNAUTHORIZED');
+				}
 				const remoteParticipant = await opts?.getParticipant?.({ event: event, object: this });
-				const session = {
+
+				session = {
 					id: crypto.randomUUID(),
 					participant: Object.assign({}, searchParamsParticipant, remoteParticipant || {}),
 					connected: true,
 					createdAt: Date.now(),
-					meta: request.cf,
-					cookies: new Cookies(request).requestCookies,
-				} satisfies Session & { participant: Partial<RegisteredParticipant> };
+					data: (await opts?.getSessionData?.({ event, object: this })) || {},
+				};
 
-				const accepted = await opts?.acceptConnection?.({ event, object: this });
-				if (opts?.acceptConnection && !accepted) {
-					throw error('UNAUTHORIZED');
-				}
 				serializeAttachment(server, session);
 				this.state.acceptWebSocket(server);
 				this.sendPresence();
@@ -120,7 +123,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 					webSocket: client,
 				});
 			} catch (error) {
-				opts?.onError?.(error);
+				opts?.onError?.({ error, ws, session, object: this });
 				return handleError(error);
 			}
 		}
@@ -132,14 +135,14 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 				throw error('SERVICE_UNAVAILABLE');
 			}
 			try {
+				await opts?.onMessage?.({ ws, session, message, object: this });
 				const handler = getHandler(topicsIn, String(type).split('.')) as Handler<any, any, any, any>;
 				const parsedData = await parse(handler?.schema, data);
 				await handler?.call({ session, ws } as any, parsedData, this);
 			} catch (error) {
-				// send error somehow
-				if (error instanceof FLARERROR) {
-				} else {
-				}
+				opts?.onError?.({ error, ws, session, message, object: this });
+				const { body, status, statusText } = getErrorAsJson(error);
+				ws.send(socketify({ type: 'error', data: { ...JSON.parse(body), status, statusText } }));
 			}
 		}
 		async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
