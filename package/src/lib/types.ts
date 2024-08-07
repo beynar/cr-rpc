@@ -62,10 +62,9 @@ export type StreamCallback<C = string> = {
 
 export type Middleware<T = any> = (event: RequestEvent) => MaybePromise<T>;
 
+export type DurableRequestEvent = Pick<RequestEvent, 'cookies' | 'request' | 'url' | 'path'> & { session?: Session; ws?: WebSocket };
+
 export type RequestEvent = {
-	isWebSocketConnect: boolean;
-	objectId: string | null;
-	objectName: string | null;
 	path: string[];
 	cookies: Cookies;
 	request: Request;
@@ -75,6 +74,19 @@ export type RequestEvent = {
 } & Env &
 	(Locals extends never ? {} : { locals: Locals });
 
+export type Session = {
+	id: string;
+	participant: RegisteredParticipant;
+	connected: boolean;
+	createdAt: number;
+	meta?: CfProperties;
+};
+
+export type DurableOptions = {
+	getParticipant?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<Session>;
+	acceptConnection?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<boolean>;
+	onError?: (error: unknown) => void;
+};
 export type HandleFunction<
 	S extends Schema | undefined,
 	M extends Middleware[] | undefined,
@@ -85,9 +97,15 @@ export type HandlePayload<
 	S extends Schema | undefined,
 	M extends Middleware[] | undefined,
 	D extends DurableServer | undefined = undefined,
-> = (S extends Schema ? { event: RequestEvent; input: SchemaInput<S> } : { event: RequestEvent }) & {
+> = (S extends Schema
+	? { event: D extends DurableServer ? DurableRequestEvent : RequestEvent; input: SchemaInput<S> }
+	: { event: D extends DurableServer ? DurableRequestEvent : RequestEvent }) & {
 	ctx: ReturnOfMiddlewares<M>;
-} & (D extends DurableServer ? { object: D } : {});
+} & (D extends DurableServer
+		? {
+				object: D;
+			}
+		: {});
 
 export type ReturnOfMiddlewares<Use extends Middleware[] | undefined, PreviousData = unknown> = Use extends Middleware[]
 	? Use extends [infer Head, ...infer Tail]
@@ -123,20 +141,17 @@ type IO<R> = R extends Router
 	: never;
 type InferWS<O> =
 	O extends DurableServerDefinition<infer R, infer I, infer O>
-		? I extends Router
-			? O extends Router
-				? {
-						WS: WebSocketClient<I, O>;
-						IN: {
-							[K in RouterPaths<I>]: InferOutPutAtPath<I, K>;
-						};
-						OUT: {
-							[K in RouterPaths<O>]: InferInputAtPath<O, K>;
-						};
-					}
-				: never
-			: never
+		? {
+				ws: WebSocketClient<I, O>;
+				in: {
+					[K in RouterPaths<I>]: InferOutPutAtPath<I, K>;
+				};
+				out: {
+					[K in RouterPaths<O>]: InferInputAtPath<O, K>;
+				};
+			}
 		: never;
+
 export type InferApiTypes<S extends Server> = IO<S['router']> & {
 	[K in keyof S['objects']]: IO<Get<S['objects'][K], 'router'>> & InferWS<S['objects'][K]>;
 };

@@ -3,7 +3,7 @@ import { createCookies } from './cookies';
 import { CorsPair } from './cors';
 import { Handler } from './procedure';
 import { error, handleError } from './error';
-import { handleRequest } from './request';
+import { createRequestEvent, handleRequest } from './request';
 
 export const getHandler = (router: Router, path: string[]) => {
 	type H = Router | Handler<any, any, any> | undefined;
@@ -14,53 +14,33 @@ export const getHandler = (router: Router, path: string[]) => {
 	return (handler ? handler : null) as Handler<any, any, any> | null;
 };
 
-export const createPartialRequestEvent = async (
+type DurableObjects = Record<
+	string,
+	{
+		prototype: DurableServer;
+	}
+>;
+
+const getDurableServer = <O extends DurableObjects>(
 	request: Request,
-	locals: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>),
 	env: Env,
-	ctx: ExecutionContext,
-): Promise<Partial<RequestEvent>> => {
+	objects?: O,
+): [undefined | DurableObjectStub<DurableServer>, boolean] => {
+	if (!objects) return [undefined, false];
 	const url = new URL(request.url);
-	let path = url.pathname.split('/').filter(Boolean);
-	let objectId = request.headers.get('x-flarepc-object-id') || url.searchParams.get('id');
-	let objectName = request.headers.get('x-flarepc-object-name') || url.searchParams.get('object');
+	const objectId = request.headers.get('x-flarepc-object-id') || url.searchParams.get('id');
+	const objectName = request.headers.get('x-flarepc-object-name') || url.searchParams.get('object');
 	const isWebSocketConnect = !!objectId && !!objectName && url.pathname.endsWith('/connect');
-	const method = request.method;
-	if (method !== 'POST' && !isWebSocketConnect) {
-		path.push(method.toLocaleLowerCase());
-	}
-	if (objectId && objectName) {
-		path = path.slice(1);
-	}
 
-	return Object.assign(
-		{},
-		{
-			path,
-			isWebSocketConnect,
-			locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals,
-			objectId,
-			objectName,
-			request,
-			url,
-			caches,
-			cookies: createCookies(request),
-		},
-	);
-};
-export const createRequestEvent = (partialEvent: Partial<RequestEvent>, env: Env, ctx: ExecutionContext): RequestEvent => {
-	return Object.assign({}, ctx, partialEvent, env) as RequestEvent;
-};
+	if (objectName && objectName in objects) {
+		const id = (env[objectName as keyof typeof env] as any).idFromName(objectId);
 
-export const createServer = <
-	R extends Router,
-	O extends Record<
-		string,
-		{
-			prototype: DurableServer;
-		}
-	>,
->({
+		const stub = (env[objectName as keyof typeof env] as any).get(id) as DurableObjectStub<DurableServer>;
+		return [stub, isWebSocketConnect];
+	}
+	return [undefined, false];
+};
+export const createServer = <R extends Router, O extends DurableObjects>({
 	router,
 	before = [],
 	after = [],
@@ -78,37 +58,32 @@ export const createServer = <
 	objects?: O;
 }) => ({
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		const partialEvent = await createPartialRequestEvent(request, locals, env, ctx);
-		const event = createRequestEvent(partialEvent, env, ctx);
+		const requestEvent = await createRequestEvent.bind(ctx)(request, env, ctx, locals);
 		let response: Response | undefined;
 
 		$: try {
 			for (let handler of before.concat(cors?.preflight || []) || []) {
-				response = (await handler(event)) ?? response;
+				response = (await handler(requestEvent)) ?? response;
 				if (response) break $;
 			}
-			const objectClass = event.objectName ? objects?.[event.objectName] : null;
-			if (objectClass) {
-				let id = (env[event.objectName as keyof typeof env] as any).idFromName(event.objectId);
+			const [stub, isWebSocketConnect] = getDurableServer(request, env, objects);
 
-				let stub = (env[event.objectName as keyof typeof env] as any).get(id) as DurableObjectStub<DurableServer>;
-
-				if (event.isWebSocketConnect) {
+			if (stub) {
+				if (isWebSocketConnect) {
 					const upgradeHeader = request.headers.get('Upgrade');
 					if (!upgradeHeader || upgradeHeader !== 'websocket') {
 						return new Response('Durable Object expected Upgrade: websocket', { status: 426 });
 					}
-					await stub.handleWebSocket(request, locals, event.objectId as string);
 					return stub.fetch(request);
 				} else {
-					response = await stub.handleRpc(request, locals);
+					response = await stub.handleRpc(request);
 				}
 			} else {
-				const handler = getHandler(router, event.path);
+				const handler = getHandler(router, requestEvent.path);
 				if (!handler) {
 					error('NOT_FOUND');
 				} else {
-					response = await handleRequest(event, handler);
+					response = await handleRequest(requestEvent, handler);
 				}
 			}
 		} catch (error) {
@@ -117,15 +92,12 @@ export const createServer = <
 		}
 
 		for (let handler of after.concat(cors?.corsify || []) || []) {
-			response = (await handler(response!, event)) ?? response;
+			response = (await handler(response!, requestEvent)) ?? response;
 		}
 
 		return response!;
 	},
-	infer: {
-		router: {},
-		objects: {},
-	} as {
+	infer: {} as {
 		router: R;
 		objects: {
 			[K in keyof O]: InferDurableApi<O[K]['prototype']>;

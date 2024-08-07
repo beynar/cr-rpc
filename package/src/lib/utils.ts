@@ -1,4 +1,4 @@
-import { Middleware, RequestEvent, ReturnOfMiddlewares, Schema } from './types';
+import type { Middleware, RequestEvent, ReturnOfMiddlewares, Schema } from './types';
 
 export const tryParse = <C>(data: unknown) => {
 	try {

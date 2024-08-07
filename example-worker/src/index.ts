@@ -1,4 +1,13 @@
-import { procedure, createServer, durableProcedure, createDurableServer, cors, type InferDurableApi, InferApiTypes } from 'flarepc';
+import {
+	procedure,
+	createServer,
+	durableProcedure,
+	createDurableServer,
+	cors,
+	type InferDurableApi,
+	InferApiTypes,
+	socketiparse,
+} from 'flarepc';
 import { string, object, optional } from 'valibot';
 import type { DurableObject } from 'cloudflare:workers';
 
@@ -30,15 +39,16 @@ const topicsIn = {
 		.handle(({ input, object }) => {
 			console.log(input);
 		}),
+	noInput: testProcedure().handle(({ event, object }) => {
+		object.send({ to: event.session?.participant.id }).message({ message: 'hello prout' });
+		console.log('hello');
+	}),
 	test: {
 		test: {
 			test: testProcedure()
 				.input(object({ name: string() }))
-				.handle(({ input, object }) => {
-					console.log(input);
-					object.send('message', {
-						message: input.name,
-					});
+				.handle(async ({ input, object, event }) => {
+					console.log(event.session?.id);
 				}),
 		},
 	},
@@ -55,9 +65,6 @@ const topicsOut = {
 		test: testProcedure()
 			.input(object({ name: string() }))
 			.handle(({ input, object }) => {
-				object.send('message', {
-					message: 'input.name',
-				});
 				return {
 					hello: input.name,
 				};
@@ -70,10 +77,7 @@ const durableRouter = {
 		test: {
 			test: testProcedure()
 				.input(object({ name: string() }))
-				.handle(({ input, object }) => {
-					object.send('message', {
-						message: 'input.name',
-					});
+				.handle(({ input, object, event }) => {
 					return {
 						object: object?.id,
 						hello: input.name,
@@ -97,9 +101,9 @@ const server = createServer({
 		TestDurable: TestDurable,
 	},
 	router,
-	locals: {
+	locals: () => ({
 		prod: true,
-	},
+	}),
 });
 
 export type Server = typeof server.infer;

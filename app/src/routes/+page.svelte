@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { api, type API } from '../api';
 
-	let ws = $state<API['TestDurable']['WS']>();
+	let ws = $state<API['TestDurable']['ws']>();
 </script>
 
 <div class="grid bg-slate-200 h-screen grid-cols-2 gap-4 p-10">
@@ -30,7 +29,7 @@
 		<button
 			class="shadow-md rounded-lg h-fit bg-white p-4"
 			onclick={async () => {
-				ws?.send.test.test.test({ name: 'caca' });
+				ws?.send.noInput();
 			}}
 		>
 			send message
