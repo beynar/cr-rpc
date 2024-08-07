@@ -62,7 +62,9 @@ export type StreamCallback<C = string> = {
 
 export type Middleware<T = any> = (event: RequestEvent) => MaybePromise<T>;
 
-export type DurableRequestEvent = Pick<RequestEvent, 'cookies' | 'request' | 'url' | 'path'> & { session?: Session; ws?: WebSocket };
+export type DurableRequestEvent = { path: string[]; cookies: Cookies; request: Request; url: URL };
+export type DurableWebsocketInputEvent = { session: Session; ws: WebSocket };
+export type DurableWebsocketOutputEvent = never;
 
 export type RequestEvent = {
 	path: string[];
@@ -80,7 +82,10 @@ export type Session = {
 	connected: boolean;
 	createdAt: number;
 	meta?: CfProperties;
+	cookies: Map<string, string>;
 };
+
+export type DurableProcedureType = 'in' | 'out' | 'router';
 
 export type DurableOptions = {
 	getParticipant?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<Session>;
@@ -91,15 +96,34 @@ export type HandleFunction<
 	S extends Schema | undefined,
 	M extends Middleware[] | undefined,
 	D extends DurableServer | undefined = undefined,
-> = (payload: HandlePayload<S, M, D>) => MaybePromise<any>;
+	T extends DurableProcedureType = 'router',
+> = (payload: HandlePayload<S, M, D, T>) => MaybePromise<any>;
 
 export type HandlePayload<
 	S extends Schema | undefined,
 	M extends Middleware[] | undefined,
 	D extends DurableServer | undefined = undefined,
+	T extends DurableProcedureType = 'router',
 > = (S extends Schema
-	? { event: D extends DurableServer ? DurableRequestEvent : RequestEvent; input: SchemaInput<S> }
-	: { event: D extends DurableServer ? DurableRequestEvent : RequestEvent }) & {
+	? {
+			event: D extends DurableServer
+				? T extends 'router'
+					? DurableRequestEvent
+					: T extends 'in'
+						? DurableWebsocketInputEvent
+						: DurableWebsocketOutputEvent
+				: RequestEvent;
+			input: SchemaInput<S>;
+		}
+	: {
+			event: D extends DurableServer
+				? T extends 'router'
+					? DurableRequestEvent
+					: T extends 'in'
+						? DurableWebsocketInputEvent
+						: DurableWebsocketOutputEvent
+				: RequestEvent;
+		}) & {
 	ctx: ReturnOfMiddlewares<M>;
 } & (D extends DurableServer
 		? {
@@ -118,7 +142,7 @@ export type ReturnOfMiddlewares<Use extends Middleware[] | undefined, PreviousDa
 	: unknown;
 
 export type Router = {
-	[K: string]: Handler<any, any, any, any> | Router;
+	[K: string]: Handler<any, any, any, any, any> | Router;
 };
 
 export type Server = {
@@ -167,7 +191,7 @@ export type Client<S extends Server> = API<S['router']> & {
 };
 
 export type API<R extends Router = Router> = {
-	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D>
+	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D, infer T>
 		? S extends Schema
 			? (payload: SchemaInput<S>) => ReturnType<H>
 			: () => ReturnType<H>
@@ -195,13 +219,13 @@ export type Get<T, K extends string> = K extends `${infer P}.${infer Rest}`
 		: 'never';
 
 export type InferInputAtPath<R extends Router, P extends RouterPaths<R>> =
-	Get<R, P> extends Handler<any, infer S, any, any> ? (S extends Schema ? SchemaInput<S> : never) : never;
+	Get<R, P> extends Handler<any, infer S, any, any, any> ? (S extends Schema ? SchemaInput<S> : never) : never;
 export type InferSchemaOutPutAtPath<R extends Router, P extends RouterPaths<R>> =
-	Get<R, P> extends Handler<any, infer S, any, any> ? (S extends Schema ? SchemaOutput<S> : never) : never;
+	Get<R, P> extends Handler<any, infer S, any, any, any> ? (S extends Schema ? SchemaOutput<S> : never) : never;
 
 export type InferOutPutAtPath<R extends Router, P extends RouterPaths<R>> =
-	Get<R, P> extends Handler<infer M, infer S, infer H, infer D>
+	Get<R, P> extends Handler<infer M, infer S, infer H, infer D, any>
 		? H extends HandleFunction<S, M, D>
 			? Awaited<ReturnType<H>>
 			: never
-		: 'never';
+		: never;

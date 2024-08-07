@@ -1,23 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Handler } from './procedure';
-import {
-	DurableOptions,
-	DurableRequestEvent,
-	Env,
-	InferInputAtPath,
-	RegisteredParticipant,
-	Router,
-	RouterPaths,
-	Schema,
-	SchemaInput,
-	Session,
-} from './types';
+import { DurableOptions, DurableRequestEvent, Env, RegisteredParticipant, Router, Session } from './types';
 import { getHandler } from './server';
-import { parse } from './utils';
-import { socketify, socketiparse } from './deform';
+import { deserializeAttachment, serializeAttachment, socketify, socketiparse } from './deform';
 import { createDurableRequestEvent, handleRequest } from './request';
 import { error, FLARERROR, handleError } from './error';
 import { WSAPI, createRecursiveProxy } from './wsProxy';
+import { parse } from './utils';
+import { Cookies } from './cookies';
 
 type SendOptions = {
 	to?: 'ALL' | (string & {}) | (string[] & {});
@@ -32,8 +22,6 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 		id: string;
 		state: DurableObjectState;
 		storage: DurableObjectStorage;
-		sessions: Map<WebSocket, Session> = new Map();
-		requestEvents: Map<WebSocket, DurableRequestEvent> = new Map();
 		// @ts-ignore
 		requestEvent: DurableRequestEvent;
 		router?: R;
@@ -65,22 +53,22 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 				const parsedData = await parse(handler?.schema, data);
 				const ctx = await handler?.call(this.requestEvent as any, parsedData, this);
 
-				const sessions = Array.from(this.sessions.entries()).filter(([key, value]) => {
-					if (value.connected !== true) {
+				const sessions = this.getSessions().filter(({ ws, session }) => {
+					if (session.connected !== true) {
 						return false;
 					}
 					if (omit && omit.length > 0) {
-						return !omit.includes(value.participant.id);
+						return !omit.includes(session.participant.id);
 					}
 					if (to === 'ALL' || !to) {
 						return true;
 					} else {
-						return [to].flat().includes(value.participant.id);
+						return [to].flat().includes(session.participant.id);
 					}
 				});
 
-				sessions.forEach(([key, value]) => {
-					key.send(socketify({ type, data: parsedData, ctx }));
+				sessions.forEach(({ ws }) => {
+					ws.send(socketify({ type, data: parsedData, ctx }));
 				});
 			}) as WSAPI<_IN>;
 
@@ -105,29 +93,25 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 		async fetch(request: Request) {
 			try {
 				const [client, server] = Object.values(new WebSocketPair());
-
+				const event = createDurableRequestEvent(request);
 				const url = new URL(request.url);
 				const participant = url.searchParams.get('participant');
+				const searchParamsParticipant = participant ? JSON.parse(participant) : { id: crypto.randomUUID() };
+				const remoteParticipant = await opts?.getParticipant?.({ event: event, object: this });
 				const session = {
 					id: crypto.randomUUID(),
-					participant: participant ? JSON.parse(participant) : { id: crypto.randomUUID() },
+					participant: Object.assign({}, searchParamsParticipant, remoteParticipant || {}),
 					connected: true,
 					createdAt: Date.now(),
 					meta: request.cf,
+					cookies: new Cookies(request).requestCookies,
 				} satisfies Session & { participant: Partial<RegisteredParticipant> };
 
-				const requestEvent = createDurableRequestEvent(request, server, session);
-
-				session.participant = (await opts?.getParticipant?.({ event: requestEvent, object: this })) || session.participant;
-
-				this.sessions.set(server, session);
-				this.requestEvents.set(server, requestEvent);
-
-				const accepted = await opts?.acceptConnection?.({ event: requestEvent, object: this });
+				const accepted = await opts?.acceptConnection?.({ event, object: this });
 				if (opts?.acceptConnection && !accepted) {
 					throw error('UNAUTHORIZED');
 				}
-
+				serializeAttachment(server, session);
 				this.state.acceptWebSocket(server);
 				this.sendPresence();
 
@@ -143,14 +127,14 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 
 		async webSocketMessage(ws: WebSocket, message: string): Promise<void> {
 			const { type, data } = socketiparse(message as string);
+			const session = deserializeAttachment(ws);
 			if (!topicsIn) {
 				throw error('SERVICE_UNAVAILABLE');
 			}
 			try {
 				const handler = getHandler(topicsIn, String(type).split('.')) as Handler<any, any, any, any>;
 				const parsedData = await parse(handler?.schema, data);
-				const requestEvent = this.requestEvents.get(ws);
-				await handler?.call(requestEvent as any, parsedData, this);
+				await handler?.call({ session, ws } as any, parsedData, this);
 			} catch (error) {
 				// send error somehow
 				if (error instanceof FLARERROR) {
@@ -159,26 +143,32 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 			}
 		}
 		async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-			console.log('closing');
-			this.sessions.delete(ws);
-			console.log(this.sessions.size);
-			this.sendPresence();
+			setTimeout(() => {
+				this.sendPresence();
+			});
 		}
+
+		getSessions = () => {
+			return this.ctx.getWebSockets().map((ws) => ({
+				session: deserializeAttachment(ws),
+				ws,
+			}));
+		};
 
 		sendPresence = () => {
 			const webSockets: WebSocket[] = [];
-			const sessions = Array.from(this.sessions.entries())
-				.filter(([key, value]) => {
-					if (value.connected !== true) {
+			const participants = this.getSessions()
+				.filter(({ ws, session }) => {
+					if (session.connected !== true) {
 						return false;
 					}
-					webSockets.push(key);
+					webSockets.push(ws);
 					return true;
 				})
-				.map(([key, value]) => value.participant);
+				.map(({ session: { participant } }) => participant);
 
 			webSockets.forEach((value) => {
-				value.send(socketify({ type: 'presence', data: sessions }));
+				value.send(socketify({ type: 'presence', data: participants }));
 			});
 		};
 	};

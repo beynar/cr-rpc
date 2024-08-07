@@ -1,7 +1,7 @@
-import { DObject } from './client';
+import type { DObject } from './client';
 import { socketify, socketiparse } from './deform';
-import { Handler } from './procedure';
-import { Get, InferOutPutAtPath, InferSchemaOutPutAtPath, RegisteredParticipant, Router, RouterPaths, Schema, SchemaInput } from './types';
+
+import { InferOutPutAtPath, InferSchemaOutPutAtPath, RegisteredParticipant, Router, RouterPaths } from './types';
 import { WSAPI, createRecursiveProxy } from './wsProxy';
 
 type MessagePayload<O extends Router, T extends RouterPaths<O>> = {
@@ -9,15 +9,35 @@ type MessagePayload<O extends Router, T extends RouterPaths<O>> = {
 	data: InferSchemaOutPutAtPath<O, T>;
 	ctx: InferOutPutAtPath<O, T>;
 };
+
+type SingletonPaths<R extends Router, P extends RouterPaths<R>> = P extends `${infer START}.${infer REST}` ? never : P;
+type NestedPaths<R extends Router, P extends RouterPaths<R>> = P extends `${infer START}.${infer REST}` ? P : never;
+
+type MessageCallback<O extends Router, K extends RouterPaths<O>> = (payload: {
+	data: InferSchemaOutPutAtPath<O, K>;
+	ctx: InferOutPutAtPath<O, K>;
+}) => void;
+
+type MessageHandlers<O extends Router> = Partial<
+	{
+		[K in SingletonPaths<O, RouterPaths<O>>]: MessageCallback<O, K>;
+	} & UnionToIntersection<PathToNestedObject<O, NestedPaths<O, RouterPaths<O>>>>
+>;
+
+type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
+
+type PathToNestedObject<O extends Router, P extends string, BasePath extends string = ''> = P extends `${infer START}.${infer REST}`
+	? Partial<{ [K in START]: PathToNestedObject<O, REST, BasePath extends '' ? `${K}` : `${BasePath}.${K}`> }>
+	: Partial<{
+			[K in P]: `${BasePath}.${K}` extends RouterPaths<O> ? MessageCallback<O, `${BasePath}.${K}`> : unknown;
+		}>;
+
 export type ConnectOptions<O extends Router> = {
 	participant?: RegisteredParticipant;
 	onOpen?: () => void;
 	onClose?: () => void;
-	messages: Partial<{
-		[K in RouterPaths<O>]: Get<O, K> extends Handler<infer M, infer S, infer H, infer D>
-			? (payload: { data: InferSchemaOutPutAtPath<O, K>; ctx: InferOutPutAtPath<O, K> }) => void
-			: never;
-	}>;
+	onPresence?: (presence: RegisteredParticipant[]) => void;
+	handlers: MessageHandlers<O>;
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -78,7 +98,6 @@ export class WebSocketClient<I extends Router, O extends Router> {
 		this.state = 'RECONNECTING';
 		let attempts = 0;
 		while (this.state === 'RECONNECTING' && attempts < this.maxReconnectAttempts) {
-			console.log({ attempts });
 			await wait(this.autoReconnectInterval * Math.pow(2, attempts));
 			try {
 				await this.open();
@@ -131,7 +150,6 @@ export class WebSocketClient<I extends Router, O extends Router> {
 				(e: CloseEvent) => {
 					switch (e.code) {
 						case 1000: // CLOSE_NORMAL
-							console.log(`WebSocket: normally closed`);
 							break;
 						default:
 							// Abnormal closure
@@ -178,9 +196,17 @@ export class WebSocketClient<I extends Router, O extends Router> {
 			const { type, data } = socketiparse(e.data as string) as MessagePayload<O, RouterPaths<O>>;
 			if (type === 'presence') {
 				this.presence = data as RegisteredParticipant[];
-				console.log(this.presence, data);
+				this.opts.onPresence?.(this.presence);
 			} else {
-				this.opts.messages[type]?.({ data, ctx: data });
+				const path = (type as string).split('.');
+				let handler = this.opts.handlers as any;
+				while (path.length > 0) {
+					const segment = path.shift()!;
+					handler = handler?.[segment as keyof typeof handler];
+				}
+				if (handler) {
+					handler({ data, ctx: data });
+				}
 			}
 		}
 	};

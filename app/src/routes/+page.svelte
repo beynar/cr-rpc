@@ -39,9 +39,20 @@
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
 			const wes = await api.TestDurable('test').connect({
-				messages: {
+				onPresence: (data) => {
+					console.log('presence', data);
+				},
+				handlers: {
 					message: ({ data, ctx }) => {
 						console.log(data);
+					},
+					test: {
+						test: ({ data, ctx }) => {
+							console.log(data);
+						},
+						test2: ({ data, ctx }) => {
+							console.log(data);
+						}
 					}
 				}
 			});

@@ -1,36 +1,49 @@
-import { DurableServer, HandleFunction, Middleware, RequestEvent, Schema, SchemaInput } from './types';
+import { DurableProcedureType, DurableServer, HandleFunction, Middleware, RequestEvent, Schema, SchemaInput } from './types';
 import { useMiddlewares } from './utils';
-const createHandler = <S extends Schema | undefined, M extends Middleware[], D extends DurableServer | undefined = undefined>(
+const createHandler = <
+	S extends Schema | undefined,
+	M extends Middleware[],
+	D extends DurableServer | undefined = undefined,
+	T extends DurableProcedureType = 'router',
+>(
 	middlewares: M,
 	schema?: S,
 ) => {
-	return <H extends HandleFunction<S, M, D>>(handleFunction: H) => {
-		return new Handler(middlewares, schema, handleFunction) as Handler<M, S, H, D>;
+	return <H extends HandleFunction<S, M, D, T>>(handleFunction: H) => {
+		return new Handler(middlewares, schema, handleFunction) as Handler<M, S, H, D, T>;
 	};
 };
 
-export const procedure = <M extends Middleware[], D extends DurableServer | undefined = undefined>(...middlewares: M) => {
+export const procedure = <
+	M extends Middleware[],
+	D extends DurableServer | undefined = undefined,
+	T extends DurableProcedureType = 'router',
+>(
+	...middlewares: M
+) => {
 	return {
-		handle: <H extends HandleFunction<undefined, M, D>>(handleFunction: H) => {
-			return createHandler<undefined, M, D>(middlewares, undefined)(handleFunction);
+		handle: <H extends HandleFunction<undefined, M, D, T>>(handleFunction: H) => {
+			return createHandler<undefined, M, D, T>(middlewares, undefined)(handleFunction);
 		},
 		input: <S extends Schema>(schema: S) => {
 			return {
-				handle: <H extends HandleFunction<S, M, D>>(handleFunction: H) => createHandler<S, M, D>(middlewares, schema)(handleFunction),
+				handle: <H extends HandleFunction<S, M, D, T>>(handleFunction: H) => createHandler<S, M, D, T>(middlewares, schema)(handleFunction),
 			};
 		},
 	};
 };
-export const durableProcedure = <D extends DurableServer>() => {
+
+export const durableProcedure = <D extends DurableServer, T extends DurableProcedureType>(_t?: T) => {
 	return <M extends Middleware[]>(...middlewares: M) => {
-		return procedure<M, D>(...middlewares);
+		return procedure<M, D, T>(...middlewares);
 	};
 };
 export class Handler<
 	M extends Middleware[],
 	S extends Schema | undefined,
-	const H extends HandleFunction<S, M, D>,
+	const H extends HandleFunction<S, M, D, T>,
 	D extends DurableServer | undefined = undefined,
+	T extends DurableProcedureType = 'router',
 > {
 	middlewares: M;
 	schema: S;

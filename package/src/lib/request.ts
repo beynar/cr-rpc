@@ -21,7 +21,7 @@ export async function createRequestEvent(
 	request: Request,
 	env: Env,
 	ctx: ExecutionContext,
-	locals: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>),
+	locals?: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>),
 ): Promise<RequestEvent> {
 	const [path, url] = getPathAndUrl(request, false);
 	return Object.assign(
@@ -39,14 +39,12 @@ export async function createRequestEvent(
 	);
 }
 
-export const createDurableRequestEvent = (request: Request, ws?: WebSocket, session?: Session): DurableRequestEvent => {
+export const createDurableRequestEvent = (request: Request): DurableRequestEvent => {
 	const [path, url] = getPathAndUrl(request, true);
 	return Object.assign(
 		{},
 		{
 			path,
-			session,
-			ws,
 			request,
 			url,
 			caches,

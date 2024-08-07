@@ -31,21 +31,23 @@ const router = {
 	}),
 };
 
-const testProcedure = durableProcedure<TestDurable>();
+const routerProcedure = durableProcedure<TestDurable, 'router'>();
+const inProcedure = durableProcedure<TestDurable, 'in'>();
+const outProcedure = durableProcedure<TestDurable, 'out'>();
 
 const topicsIn = {
-	message: testProcedure()
+	message: inProcedure()
 		.input(object({ message: string() }))
 		.handle(({ input, object }) => {
 			console.log(input);
 		}),
-	noInput: testProcedure().handle(({ event, object }) => {
+	noInput: inProcedure().handle(({ event, object }) => {
+		console.log('here');
 		object.send({ to: event.session?.participant.id }).message({ message: 'hello prout' });
-		console.log('hello');
 	}),
 	test: {
 		test: {
-			test: testProcedure()
+			test: inProcedure()
 				.input(object({ name: string() }))
 				.handle(async ({ input, object, event }) => {
 					console.log(event.session?.id);
@@ -54,7 +56,7 @@ const topicsIn = {
 	},
 };
 const topicsOut = {
-	message: testProcedure()
+	message: outProcedure()
 		.input(object({ message: optional(string(), 'hello') }))
 		.handle(({ input, object }) => {
 			return {
@@ -62,7 +64,14 @@ const topicsOut = {
 			};
 		}),
 	test: {
-		test: testProcedure()
+		test: outProcedure()
+			.input(object({ name: string() }))
+			.handle(({ input, object }) => {
+				return {
+					hello: input.name,
+				};
+			}),
+		test2: outProcedure()
 			.input(object({ name: string() }))
 			.handle(({ input, object }) => {
 				return {
@@ -75,7 +84,7 @@ const topicsOut = {
 const durableRouter = {
 	test: {
 		test: {
-			test: testProcedure()
+			test: routerProcedure()
 				.input(object({ name: string() }))
 				.handle(({ input, object, event }) => {
 					return {
@@ -108,5 +117,5 @@ const server = createServer({
 
 export type Server = typeof server.infer;
 export type API = InferApiTypes<Server>;
-
+export type OUT = typeof topicsOut;
 export default server;

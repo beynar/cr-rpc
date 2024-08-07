@@ -18,7 +18,7 @@ export const createRecursiveProxy = (callback: (opts: { type: string; data: unkn
 };
 
 export type WSAPI<R extends Router> = {
-	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D>
+	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D, infer T>
 		? S extends Schema
 			? (payload: SchemaInput<S>) => void
 			: () => void
