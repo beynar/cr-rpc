@@ -27,7 +27,12 @@ type SendOptions = {
 	omit?: string | string[];
 };
 
-export const createDurableServer = <_IN extends Router, _OUT extends Router>(opts?: DurableOptions, topicsIn?: _IN, topicsOut?: _OUT) => {
+export const createDurableServer = <_IN extends Router, _OUT extends Router>(
+	opts: DurableOptions & {
+		in: _IN;
+		out: _OUT;
+	},
+) => {
 	return class DurableServer<R extends Router = Router, IN extends _IN = _IN, OUT extends _OUT = _OUT> extends DurableObject<any> {
 		public ctx: DurableObjectState;
 		public env: Env;
@@ -57,7 +62,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 			},
 		) =>
 			createRecursiveProxy(async ({ type, data }) => {
-				if (!topicsOut) {
+				if (!opts.out) {
 					throw error('SERVICE_UNAVAILABLE');
 				}
 				const sessions = this.getSessions().filter(({ ws, session }) => {
@@ -76,7 +81,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 
 				if (sessions.length) {
 					const [{ session }] = sessions;
-					const handler = getHandler(topicsOut, type.split('.')) as Handler<any, any, any, any>;
+					const handler = getHandler(opts.out, type.split('.')) as Handler<any, any, any, any>;
 					const parsedData = await parse(handler?.schema, data);
 					const ctx = await handler?.call(
 						{
@@ -152,12 +157,12 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 		async webSocketMessage(ws: WebSocket, message: string): Promise<void> {
 			const { type, data } = socketiparse(message as string);
 			const session = deserializeAttachment(ws);
-			if (!topicsIn) {
+			if (!opts.in) {
 				throw error('SERVICE_UNAVAILABLE');
 			}
 			try {
 				await opts?.onMessage?.({ ws, session, message, object: this });
-				const handler = getHandler(topicsIn, String(type).split('.')) as Handler<any, any, any, any>;
+				const handler = getHandler(opts.in, String(type).split('.')) as Handler<any, any, any, any>;
 				const parsedData = await parse(handler?.schema, data);
 
 				await handler?.call(

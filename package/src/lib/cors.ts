@@ -20,7 +20,7 @@ export type CorsPair = {
 
 export const cors = (options: CorsOptions = {}) => {
 	// Destructure and set defaults for options.
-	let { origin = '*', credentials = true, allowMethods = '*', allowHeaders, exposeHeaders, maxAge = 86400 } = options;
+	let { origin = '*', credentials = true, allowMethods = '*', allowHeaders, exposeHeaders, maxAge = 3600 } = options;
 
 	if (allowHeaders && (allowHeaders[0] || allowHeaders) !== '*') {
 		allowHeaders.concat(['x-flarepc-client', 'x-flarepc-object-name', 'x-flarepc-object-id', 'x-flarepc-websocket']);
@@ -28,7 +28,6 @@ export const cors = (options: CorsOptions = {}) => {
 
 	const getAccessControlOrigin = (request?: Request): string => {
 		const requestOrigin = request?.headers?.get('origin'); // may be null if no request passed
-		console.log(origin);
 		// @ts-expect-error
 		if (origin === true) return requestOrigin;
 		// @ts-expect-error

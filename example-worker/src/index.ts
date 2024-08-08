@@ -37,6 +37,7 @@ const valibotSchema = object({
 	platform: optional(string(), 'android'),
 	versions: optional(array(string()), ['1', '2', '3']),
 });
+versions: z.optional(z.array(z.string()));
 interface Env {
 	TestDurable: DurableObject;
 	GROQ_API_KEY: string;
@@ -92,7 +93,7 @@ const topicsOut = {
 			//
 		})
 			.input(object({ message: optional(string(), 'hello') }))
-			.handle(({ input, object }) => {
+			.handle(({ input, object, event }) => {
 				return {
 					hello: input.message,
 				};
@@ -127,7 +128,7 @@ const durableRouter = {
 				};
 			}),
 	},
-	ai: procedure()
+	ai: routerProcedure()
 		.input(z.string())
 		.handle(async ({ input, event }) => {
 			const groq = new Groq({
@@ -163,6 +164,7 @@ const durableRouter = {
 					const counter2 = Number(event.cookies.get('counter2')) || 0;
 					event.cookies.set('counter', String(counter + 1));
 					event.cookies.set('counter2', String(counter2 + 1));
+					console.log({ counter, counter2 });
 					return {
 						hello: input.name,
 					};
@@ -170,7 +172,10 @@ const durableRouter = {
 		},
 	},
 };
-export class TestDurable extends createDurableServer({}, topicsIn, topicsOut) {
+export class TestDurable extends createDurableServer({
+	in: topicsIn,
+	out: topicsOut,
+}) {
 	test = true;
 	router = durableRouter;
 }

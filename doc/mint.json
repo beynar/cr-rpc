@@ -1,0 +1,51 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "flarepc",
+
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#FF7043",
+    "light": "#FFAB91",
+    "dark": "#D84315",
+    "anchors": {
+      "from": "#FFAB91",
+      "to": "#FF7043"
+    }
+  },
+
+  "topbarCtaButton": {
+    "name": "Github",
+    "url": "https://dashboard.mintlify.com"
+  },
+
+  "navigation": [
+    {
+      "group": "Documentation",
+      "pages": ["introduction", "quickstart", "development"]
+    },
+    {
+      "group": "RPC Worker",
+      "pages": [
+        "worker/markdown",
+        "worker/code",
+        "worker/images",
+        "worker/settings",
+        "worker/navigation",
+        "worker/reusable-snippets"
+      ]
+    },
+    {
+      "group": "RPC Durable Object",
+      "pages": ["durable/introduction"]
+    },
+    {
+      "group": "Websocket Durable Object",
+      "pages": ["durable/introduction"]
+    }
+  ],
+  "footerSocials": {
+    "x": "https://x.com/mintlify",
+    "github": "https://github.com/mintlify",
+    "linkedin": "https://www.linkedin.com/company/mintsearch"
+  }
+}

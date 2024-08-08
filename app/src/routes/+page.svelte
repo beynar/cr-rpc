@@ -4,26 +4,26 @@
 
 	let ws = $state<API['TestDurable']['ws']>();
 
-	// onMount(async () => {
-	// 	const wes = await api.TestDurable('test').connect({
-	// 		dedupeConnection: true,
-	// 		onError(error) {
-	// 			console.log(error);
-	// 		},
-	// 		onPresence: (data) => {
-	// 			console.log('presence', data, 'helleaeazlea');
-	// 		},
-	// 		handlers: {
-	// 			message: ({ data, ctx }) => {
-	// 				console.log(data);
-	// 			},
-	// 			paul: {
-	// 				louis: ({ data, ctx }) => {}
-	// 			}
-	// 		}
-	// 	});
-	// 	ws = wes;
-	// });
+	onMount(async () => {
+		const wes = await api.TestDurable('test').connect({
+			dedupeConnection: true,
+			onError(error) {
+				console.log(error);
+			},
+			onPresence: (data) => {
+				console.log('presence', data, 'helleaeazlea');
+			},
+			handlers: {
+				message: ({ data, ctx }) => {
+					console.log(data);
+				},
+				paul: {
+					louis: ({ data, ctx }) => {}
+				}
+			}
+		});
+		ws = wes;
+	});
 </script>
 
 <div class="grid bg-slate-200 h-screen grid-cols-2 gap-4 p-10">

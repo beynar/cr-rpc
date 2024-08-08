@@ -74,11 +74,13 @@ export const createClient = <S extends Server>(
 		headers,
 		fetch: f = fetch,
 		onError = () => {},
+		includeCredentials = true,
 	}: {
 		endpoint?: string;
 		headers?: HeadersInit | (<I = unknown>({ path, input }: { path: string; input: I }) => MaybePromise<HeadersInit>);
 		fetch?: typeof fetch;
 		onError?: (error: unknown, response: Response) => void;
+		includeCredentials?: boolean;
 	} = {
 		endpoint: '/api',
 		onError: () => {},
@@ -100,7 +102,7 @@ export const createClient = <S extends Server>(
 			method,
 			body: method === 'GET' ? undefined : form(payload),
 			// @ts-ignore
-			credentials: 'include',
+			credentials: includeCredentials ? 'include' : 'omit',
 			// @ts-ignore
 			keepalive: true,
 

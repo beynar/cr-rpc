@@ -14,6 +14,7 @@ import {
 	InferDurableApi,
 	GetObjectJurisdictionOrLocationHint,
 	Server,
+	cors as corsHandler,
 	ObjectInfo,
 	withCookies,
 } from '.';
@@ -97,17 +98,21 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 	before?: ((event: RequestEvent) => Response | void)[];
 	after?: ((response: Response, event: RequestEvent) => Response | void)[];
 	catch?: (error: unknown) => Response | void;
-	cors?: CorsPair;
+	cors?: CorsPair | false;
 	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
 	objects?: O;
 }) => ({
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		// Cors are enabled by default with sensible default  to smoothen the usage and allow usage of cookies.
+		if (!cors && cors !== false) {
+			cors = corsHandler();
+		}
 		const [stub, isWebSocketConnect, object] = await getDurableServer(request, env, objects, getObjectJurisdictionOrLocationHint);
 		const requestEvent = await createRequestEvent(request, env, ctx, object, locals);
 
 		let response: Response | undefined;
 		$: try {
-			for (let handler of before.concat(cors?.preflight || []) || []) {
+			for (let handler of before.concat((cors as CorsPair)?.preflight || []) || []) {
 				response = (await handler(requestEvent)) ?? response;
 				if (response) break $;
 			}
@@ -140,7 +145,7 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 			response = handleError(error);
 		}
 
-		for (let handler of after.concat(cors?.corsify || []) || []) {
+		for (let handler of after.concat((cors as CorsPair)?.corsify || []) || []) {
 			response = (await handler(response!, requestEvent)) ?? response;
 		}
 
