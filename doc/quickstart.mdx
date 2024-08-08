@@ -1,0 +1,159 @@
+---
+title: "Quickstart"
+description: "Start building build your typesafe RPC worker in under 5 minutes"
+---
+
+## Setup
+
+Given the nature of Cloudflare Workers, you will usually use this library inside a monorepo. At least you will need a folder for your worker and a folder for your application that will consume the types of your Worker.
+
+<Steps>
+  <Step title="Monorepo setup (pnpm)">
+
+<CodeGroup>
+
+```yaml pnpm-workspace (root)
+packages:
+  - "app"
+  - "worker"
+```
+
+```json package.json (app)
+{
+  "dependencies": {
+    "worker": "workspace:*"
+  }
+}
+```
+
+</CodeGroup>
+  </Step>
+  <Step title="Create a worker beside the app">
+
+<CodeGroup>
+
+```yaml pnpm-workspace (root)
+packages:
+  - "app"
+  - "worker"
+```
+
+```json package.json (app)
+{
+  "dependencies": {
+    "worker": "workspace:*"
+  }
+}
+```
+
+</CodeGroup>
+  </Step>
+  <Step title="Install">
+
+<CodeGroup>
+
+```bash pnpm
+pnpm add flarepc
+```
+
+```bash npm
+npm i flarepc
+```
+
+```bash yarn
+yarn add flarepc
+```
+
+</CodeGroup>
+  </Step>
+</Steps>
+
+## Usage
+
+### Schema
+
+Flarepc works with some major validations librairies out of the box: Zod, ArkType and Valibot.
+
+<CodeGroup>
+
+```typescript Zod
+import { z } from "zod";
+
+const schema = z.object({
+  name: z.string(),
+  versions: z.optional(z.array(z.string()))
+});
+```
+
+```typescript ArkType
+import { type } from "arktype";
+
+const schema = type({
+  name: "string",
+  "versions?": "string[]"
+});
+```
+
+```typescript Valibot
+import { string, object, optional, array } from "valibot";
+
+const schema = object({
+  name: string(),
+  versions: optional(array(string()))
+});
+```
+
+</CodeGroup>
+
+### Worker
+
+```typescript worker index.ts
+import { procedure, createServer, InferApiTypes } from "flarepc";
+
+// Your procedures that can be infinitely nested
+const router = {
+  hello: {
+    world: procedure()
+      .input(schema)
+      .handle(async ({ event, input }) => {
+        return {
+          hello: input.name
+        };
+      })
+  }
+};
+
+// The actual worker
+const server = createServer({
+  router
+});
+
+// Types that will be used in your application
+export type Server = typeof server.infer;
+export type API = InferApiTypes<Server>;
+export default server;
+```
+
+### Application
+
+```typescript app src/api.ts
+import { createClient } from "flarepc/client";
+import type { Server, API } from "worker";
+
+export const api = createClient<Server>({
+  // The URL of your worker endpoint
+  endpoint: "http://localhost:8080"
+});
+```
+
+### Call the API
+
+```typescript app somewhere
+import { api } from "./api";
+const onClick = async () => {
+  const result = await api.hello.world({
+    name: "John"
+  });
+  // ^-- { hello: string }
+};
+```

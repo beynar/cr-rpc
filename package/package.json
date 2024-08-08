@@ -1,0 +1,63 @@
+{
+	"name": "flarepc",
+	"version": "0.0.24",
+	"private": false,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"build": "tsup && node fixBuildTypes.js",
+		"build-dev": "tsup --watch && node fixBuildTypes.js",
+		"start": "wrangler dev",
+		"test": "vitest --ui"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"module": "./dist/index.mjs",
+			"require": "./dist/index.js"
+		},
+		"./cors": {
+			"types": "./dist/cors.d.ts",
+			"import": "./dist/cors.mjs",
+			"module": "./dist/cors.mjs",
+			"require": "./dist/cors.js"
+		},
+		"./client": {
+			"types": "./dist/client.d.ts",
+			"import": "./dist/client.mjs",
+			"module": "./dist/client.mjs",
+			"require": "./dist/client.js",
+			"svelte": "./dist/client.js"
+		}
+	},
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"!dist/**/*.test.*",
+		"!dist/**/*.spec.*"
+	],
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.4.17",
+		"@cloudflare/workers-types": "^4.20240729.0",
+		"@types/cookie": "^0.6.0",
+		"@types/js-cookie": "^3.0.6",
+		"@vitest/ui": "^1.5.0",
+		"arktype": "2.0.0-beta.2",
+		"estrella": "^1.4.1",
+		"tsup": "^8.2.4",
+		"typescript": "^5.5.4",
+		"valibot": "^0.30.0",
+		"vitest": "1.5.0",
+		"wrangler": "^3.68.0",
+		"zod": "^3.23.8"
+	},
+	"dependencies": {
+		"@types/bun": "^1.1.6",
+		"ampliform": "^0.0.9",
+		"cookie": "^0.6.0",
+		"devalue": "^5.0.0",
+		"groq-sdk": "^0.5.0",
+		"neoqs": "^6.12.3"
+	}
+}
