@@ -1,6 +1,6 @@
-import { StreamCallback } from './types';
+import { StreamCallbacks } from './types';
 import { tryParse } from './utils';
-export const stream = <C>(result: ReadableStream<C>, callbacks?: StreamCallback<C>) => {
+export const stream = <C>(result: ReadableStream<C>, callbacks?: StreamCallbacks<C>) => {
 	const streamReader = result.getReader();
 	const chunks: C[] = [];
 	let first = true;
@@ -28,5 +28,5 @@ export const stream = <C>(result: ReadableStream<C>, callbacks?: StreamCallback<
 		},
 	});
 
-	return [stream as ReadableStream<C>, { 'Content-Type': 'text/event-stream' }];
+	return stream as ReadableStream<C>;
 };

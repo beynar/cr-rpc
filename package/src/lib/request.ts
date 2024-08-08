@@ -1,8 +1,17 @@
-import { createCookies } from './cookies';
-import { deform, form } from './deform';
-import { Handler } from './procedure';
-import { DurableRequestEvent, DurableServer, Env, Locals, MaybePromise, RequestEvent, Session } from './types';
-import { parse } from './utils';
+import {
+	parse,
+	Env,
+	Locals,
+	MaybePromise,
+	RequestEvent,
+	createCookies,
+	deform,
+	Handler,
+	DurableRequestEvent,
+	form,
+	ObjectInfo,
+	Cookies,
+} from '.';
 
 const getPathAndUrl = (request: Request, isObject: boolean) => {
 	const url = new URL(request.url);
@@ -21,36 +30,29 @@ export async function createRequestEvent(
 	request: Request,
 	env: Env,
 	ctx: ExecutionContext,
+	object: ObjectInfo | undefined,
 	locals?: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>),
 ): Promise<RequestEvent> {
 	const [path, url] = getPathAndUrl(request, false);
-	return Object.assign(
-		{},
-		{
-			path,
-			locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals,
-			request,
-			url,
-			caches,
-			cookies: createCookies(request),
-		},
-		ctx,
-		env,
-	);
+	return Object.assign(ctx, env, {
+		path,
+		locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals,
+		request,
+		object,
+		url,
+		cookies: createCookies(request),
+	});
 }
 
-export const createDurableRequestEvent = (request: Request): DurableRequestEvent => {
+export const createDurableRequestEvent = (request: Request, object?: ObjectInfo): DurableRequestEvent => {
 	const [path, url] = getPathAndUrl(request, true);
-	return Object.assign(
-		{},
-		{
-			path,
-			request,
-			url,
-			caches,
-			cookies: createCookies(request),
-		},
-	);
+	return {
+		path,
+		object,
+		request,
+		url,
+		cookies: new Cookies(request),
+	};
 };
 
 export const handleRequest = async (event: DurableRequestEvent | RequestEvent, handler: Handler<any, any, any, any>, object?: any) => {

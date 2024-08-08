@@ -9,3 +9,4 @@ export * from './request';
 export * from './cookies';
 export * from './cors';
 export * from './stream';
+export * from './wsProxy';

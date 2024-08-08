@@ -6,7 +6,7 @@ import { WSAPI, createRecursiveProxy } from './wsProxy';
 export type WebSocketState = 'RECONNECTING' | 'CONNECTED' | 'CLOSED';
 
 export type ConnectOptions<O extends Router> = {
-	participant?: Participant;
+	searchParams?: Record<string, string>;
 	onOpen?: () => void;
 	onClose?: () => void;
 	onPresence?: (presence: Participant[]) => void;
@@ -146,6 +146,7 @@ export class WebSocketClient<I extends Router, O extends Router> {
 			this.ws.addEventListener(
 				'error',
 				(e) => {
+					console.log('error', e);
 					switch (e.message) {
 						case 'ECONNREFUSED':
 							this.reconnect();
@@ -211,10 +212,9 @@ export const createWebSocketConnection = async <I extends Router, O extends Rout
 	const searchParams = new URLSearchParams({
 		id: object.id!,
 		object: object.name!,
+		...(opts.searchParams || {}),
 	});
-	if (opts.participant) {
-		searchParams.set('participant', JSON.stringify(opts.participant));
-	}
+
 	endpoint.search = searchParams.toString();
 	const stringifyEndpoint = endpoint.toString();
 

@@ -1,9 +1,8 @@
-import { CookieSerializeOptions } from 'cookie';
-// const cookie = {}
+import { type CookieSerializeOptions, serialize, parse } from 'cookie';
 
 export class Cookies {
 	requestCookies: Map<string, string>;
-	private responseCookies: Map<string, { value: string; options: CookieSerializeOptions }>;
+	responseCookies: Map<string, { value: string; options?: CookieSerializeOptions }>;
 	private request: Request;
 
 	constructor(request: Request) {
@@ -13,7 +12,8 @@ export class Cookies {
 	}
 
 	private createRequestCookies(): void {
-		const cookieHeader = this.request.headers.get('cookie');
+		const cookieHeader = this.request.headers.get('Cookie');
+
 		if (cookieHeader) {
 			let index = 0;
 			while (index < cookieHeader.length) {
@@ -49,11 +49,11 @@ export class Cookies {
 		return this.requestCookies.get(name);
 	}
 
-	set(name: string, value: string, options: CookieSerializeOptions): void {
+	set(name: string, value: string, options?: CookieSerializeOptions): void {
 		this.responseCookies.set(name, { value, options });
 	}
 
-	delete(name: string, options: CookieSerializeOptions): void {
+	delete(name: string, options?: CookieSerializeOptions): void {
 		this.responseCookies.set(name, {
 			value: '',
 			options: { ...options, expires: new Date(0) },
@@ -62,11 +62,9 @@ export class Cookies {
 
 	cookiefy(response: Response): Response {
 		if (this.responseCookies.size > 0) {
-			const setCookieHeader = Array.from(this.responseCookies.entries())
-				.map(([name, { value, options }]) => this.serialize(name, encodeURIComponent(value), options))
-				.join('; ');
-
-			response.headers.set('Set-Cookie', setCookieHeader);
+			Array.from(this.responseCookies.entries()).forEach(([name, { value, options }]) => {
+				response.headers.append('Set-Cookie', serialize(name, value, options));
+			});
 		}
 		return response;
 	}
@@ -111,4 +109,11 @@ export class Cookies {
 
 export const createCookies = (request: Request): Cookies => {
 	return new Cookies(request);
+};
+
+export const withCookies = (reponse: Response, { cookies }: { cookies: Cookies }) => {
+	if (reponse.status !== 200) {
+		return reponse;
+	}
+	return cookies.cookiefy(reponse);
 };

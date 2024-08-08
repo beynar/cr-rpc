@@ -76,17 +76,26 @@ export type SchemaOutput<S extends Schema> = S extends ASchema
 
 export type MaybePromise<T> = T | Promise<T>;
 
-export type StreamCallback<C = string> = {
-	onStart?: () => MaybePromise<void>;
-	onChunk?: (onChunk: { chunk: C; first: boolean }) => MaybePromise<void>;
-	onEnd?: (chunks: C[]) => MaybePromise<void>;
+export type Middleware<
+	D extends DurableServer | undefined = undefined,
+	T extends DurableProcedureType = undefined,
+	R = any,
+> = D extends undefined ? (event: DynamicRequestEvent<D, T>) => MaybePromise<R> : (event: DynamicRequestEvent<D, T>) => MaybePromise<R>;
+
+export type DurableRequestEvent = {
+	path: string[];
+	cookies: Cookies;
+	request: Request;
+	url: URL;
+	object: ObjectInfo | undefined;
 };
 
-export type Middleware<T = any> = (event: RequestEvent) => MaybePromise<T>;
+export type DurableWebsocketInputEvent = { session: Session; ws: WebSocket; object: ObjectInfo };
 
-export type DurableRequestEvent = { path: string[]; cookies: Cookies; request: Request; url: URL };
-export type DurableWebsocketInputEvent = { session: Session; ws: WebSocket };
-export type DurableWebsocketOutputEvent = never;
+export type DurableWebsocketOutputEvent = {
+	sessions: { session: Session; ws: WebSocket }[];
+	object: ObjectInfo;
+};
 
 export type RequestEvent = {
 	path: string[];
@@ -104,6 +113,7 @@ export type Session = {
 	connected: boolean;
 	createdAt: number;
 	data: SessionData;
+	object: ObjectInfo;
 };
 
 export type MessagePayload<O extends Router, T extends RouterPaths<O>> = {
@@ -134,59 +144,63 @@ export type PathToNestedObject<O extends Router, P extends string, BasePath exte
 			[K in P]: `${BasePath}.${K}` extends RouterPaths<O> ? MessageCallback<O, `${BasePath}.${K}`> : unknown;
 		}>;
 
-export type DurableProcedureType = 'in' | 'out' | 'router';
+export type DurableProcedureType = 'in' | 'out' | 'router' | undefined;
 
 export type DurableOptions = {
-	getParticipant?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<Participant>;
-	getSessionData?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<SessionData>;
-	acceptConnection?: (payload: { event: DurableRequestEvent; object: DurableServer }) => MaybePromise<boolean>;
+	getSessionDataAndParticipant?: (payload: {
+		event: DurableRequestEvent;
+		object: DurableServer;
+	}) => MaybePromise<{ session: SessionData; participant: Participant }>;
 	onError?: (payload: { error: unknown; ws?: WebSocket; session?: Session; message?: string; object: DurableServer }) => MaybePromise<void>;
 	onMessage?: (payload: { ws: WebSocket; session: Session; message: string; object: DurableServer }) => MaybePromise<void>;
 };
 export type HandleFunction<
 	S extends Schema | undefined,
-	M extends Middleware[] | undefined,
+	M extends Middleware<D, T>[] | undefined,
 	D extends DurableServer | undefined = undefined,
-	T extends DurableProcedureType = 'router',
+	T extends DurableProcedureType = undefined,
 > = (payload: HandlePayload<S, M, D, T>) => MaybePromise<any>;
+
+type OmitNever<T> = Pick<
+	T,
+	{
+		[K in keyof T]: T[K] extends never ? never : K;
+	}[keyof T]
+>;
+
+export type DynamicRequestEvent<
+	D extends DurableServer | undefined = undefined,
+	T extends DurableProcedureType = undefined,
+> = D extends undefined
+	? RequestEvent
+	: T extends undefined | 'router'
+		? DurableRequestEvent
+		: T extends 'in'
+			? DurableWebsocketInputEvent
+			: DurableWebsocketOutputEvent;
 
 export type HandlePayload<
 	S extends Schema | undefined,
-	M extends Middleware[] | undefined,
+	M extends Middleware<D, T>[] | undefined,
 	D extends DurableServer | undefined = undefined,
-	T extends DurableProcedureType = 'router',
-> = (S extends Schema
-	? {
-			event: D extends DurableServer
-				? T extends 'router'
-					? DurableRequestEvent
-					: T extends 'in'
-						? DurableWebsocketInputEvent
-						: DurableWebsocketOutputEvent
-				: RequestEvent;
-			input: SchemaInput<S>;
-		}
-	: {
-			event: D extends DurableServer
-				? T extends 'router'
-					? DurableRequestEvent
-					: T extends 'in'
-						? DurableWebsocketInputEvent
-						: DurableWebsocketOutputEvent
-				: RequestEvent;
-		}) & {
-	ctx: ReturnOfMiddlewares<M>;
-} & (D extends DurableServer
-		? {
-				object: D;
-			}
-		: {});
+	T extends DurableProcedureType = undefined,
+> = OmitNever<{
+	event: DynamicRequestEvent<D, T>;
+	input: S extends Schema ? SchemaInput<S> : never;
+}> & {
+	ctx: ReturnOfMiddlewares<M, D, T>;
+} & (D extends undefined ? {} : { object: D });
 
-export type ReturnOfMiddlewares<Use extends Middleware[] | undefined, PreviousData = unknown> = Use extends Middleware[]
+export type ReturnOfMiddlewares<
+	Use extends Middleware<D, T>[] | undefined,
+	D extends DurableServer | undefined = undefined,
+	T extends DurableProcedureType = undefined,
+	PreviousData = unknown,
+> = Use extends Middleware<D, T>[]
 	? Use extends [infer Head, ...infer Tail]
-		? Head extends Middleware<infer HeadData>
-			? Tail extends Middleware[]
-				? PreviousData & HeadData & ReturnOfMiddlewares<Tail, PreviousData & HeadData>
+		? Head extends Middleware<D, T, infer HeadData>
+			? Tail extends Middleware<infer DD, infer TT, infer TD>[]
+				? PreviousData & HeadData & ReturnOfMiddlewares<Tail, DD, TT, PreviousData & HeadData>
 				: HeadData & PreviousData
 			: PreviousData
 		: unknown
@@ -235,17 +249,29 @@ export type InferDurableApi<D extends DurableServer> = DurableServerDefinition<D
 
 export type Client<S extends Server> = API<S['router']> & {
 	[K in keyof S['objects']]: (
-		id: string,
+		id?: string,
 	) => S['objects'][K] extends DurableServerDefinition<infer R, infer I, infer O>
 		? API<R> & { connect: (options: ConnectOptions<O>) => Promise<WebSocketClient<I, O>> }
 		: never;
 };
 
+export type StreamCallbacks<C = string> = {
+	onStart?: () => MaybePromise<void>;
+	onChunk?: (onChunk: { chunk: C; first: boolean }) => MaybePromise<void>;
+	onEnd?: (chunks: C[]) => MaybePromise<void>;
+};
+
+export type StreamCallback<S = any> = ({ chunk, first }: { chunk: S; first: boolean }) => void;
+
 export type API<R extends Router = Router> = {
 	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D, infer T>
 		? S extends Schema
-			? (payload: SchemaInput<S>) => ReturnType<H>
-			: () => ReturnType<H>
+			? ReturnType<H> extends Promise<ReadableStream<infer C>>
+				? (payload: SchemaInput<S>, callback: StreamCallback<C>) => void
+				: (payload: SchemaInput<S>) => ReturnType<H>
+			: ReturnType<H> extends Promise<ReadableStream<infer C>>
+				? (callback: StreamCallback<C>) => void
+				: () => ReturnType<H>
 		: R[K] extends Router
 			? API<R[K]>
 			: R[K];
@@ -276,7 +302,26 @@ export type InferSchemaOutPutAtPath<R extends Router, P extends RouterPaths<R>> 
 
 export type InferOutPutAtPath<R extends Router, P extends RouterPaths<R>> =
 	Get<R, P> extends Handler<infer M, infer S, infer H, infer D, any>
-		? H extends HandleFunction<S, M, D>
+		? H extends HandleFunction<S, infer M, D>
 			? Awaited<ReturnType<H>>
 			: never
 		: never;
+
+export type GetObjectJurisdictionOrLocationHint = (payload: {
+	request: Request;
+	env: Env;
+	object: {
+		name: string;
+		id?: string;
+	};
+}) => MaybePromise<{
+	jurisdiction?: DurableObjectJurisdiction;
+	locationHint?: DurableObjectLocationHint;
+}>;
+
+export type ObjectInfo = {
+	name: string;
+	id: string;
+	jurisdiction?: DurableObjectJurisdiction;
+	locationHint?: DurableObjectLocationHint;
+};

@@ -1,12 +1,26 @@
 import { DurableObject } from 'cloudflare:workers';
-import { Handler } from './procedure';
-import { DurableOptions, DurableRequestEvent, Env, Participant, Router, Session } from './types';
-import { getHandler } from './server';
-import { deserializeAttachment, serializeAttachment, socketify, socketiparse } from './deform';
-import { createDurableRequestEvent, handleRequest } from './request';
-import { error, FLARERROR, getErrorAsJson, handleError } from './error';
-import { WSAPI, createRecursiveProxy } from './wsProxy';
-import { parse } from './utils';
+import {
+	Handler,
+	DurableOptions,
+	Env,
+	Router,
+	Session,
+	getHandler,
+	parse,
+	WSAPI,
+	createRecursiveProxy,
+	error,
+	getErrorAsJson,
+	handleError,
+	createDurableRequestEvent,
+	handleRequest,
+	deserializeAttachment,
+	serializeAttachment,
+	socketify,
+	socketiparse,
+	ObjectInfo,
+	withCookies,
+} from '.';
 
 type SendOptions = {
 	to?: 'ALL' | (string & {}) | (string[] & {});
@@ -21,8 +35,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 		id: string;
 		state: DurableObjectState;
 		storage: DurableObjectStorage;
-		// @ts-ignore
-		requestEvent: DurableRequestEvent;
+
 		router?: R;
 		topicsIn?: IN;
 		topicsOut?: OUT;
@@ -47,11 +60,6 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 				if (!topicsOut) {
 					throw error('SERVICE_UNAVAILABLE');
 				}
-
-				const handler = getHandler(topicsOut, type.split('.')) as Handler<any, any, any, any>;
-				const parsedData = await parse(handler?.schema, data);
-				const ctx = await handler?.call(this.requestEvent as any, parsedData, this);
-
 				const sessions = this.getSessions().filter(({ ws, session }) => {
 					if (session.connected !== true) {
 						return false;
@@ -66,23 +74,38 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 					}
 				});
 
-				sessions.forEach(({ ws }) => {
-					ws.send(socketify({ type, data: parsedData, ctx }));
-				});
-			}) as WSAPI<_IN>;
+				if (sessions.length) {
+					const [{ session }] = sessions;
+					const handler = getHandler(topicsOut, type.split('.')) as Handler<any, any, any, any>;
+					const parsedData = await parse(handler?.schema, data);
+					const ctx = await handler?.call(
+						{
+							object: session.object,
+							sessions,
+						} as any,
+						parsedData,
+						this,
+					);
 
-		async handleRpc(request: Request) {
-			const requestEvent = createDurableRequestEvent(request);
-			if (!this.router) {
-				throw error('SERVICE_UNAVAILABLE');
-			}
+					sessions.forEach(({ ws }) => {
+						ws.send(socketify({ type, data: parsedData, ctx }));
+					});
+				}
+			}) as WSAPI<_OUT>;
+
+		async handleRpc(request: Request, object?: ObjectInfo) {
+			const requestEvent = createDurableRequestEvent(request, object);
 			try {
+				if (!this.router) {
+					throw error('SERVICE_UNAVAILABLE');
+				}
 				this.id = request.headers.get('x-flarepc-object-id') as string;
 				const handler = getHandler(this.router, requestEvent.path);
 				if (!handler) {
 					error('NOT_FOUND');
 				} else {
-					return handleRequest(requestEvent as any, handler, this);
+					const response = await handleRequest(requestEvent as any, handler, this);
+					return withCookies(response, requestEvent);
 				}
 			} catch (error) {
 				return handleError(error);
@@ -92,28 +115,26 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 		async fetch(request: Request) {
 			let session: Session | undefined = undefined;
 			let ws: WebSocket | undefined = undefined;
+			const object = request.cf?.object as ObjectInfo;
 			try {
 				const [client, server] = Object.values(new WebSocketPair());
 				ws = server;
 				const event = createDurableRequestEvent(request);
-				const url = new URL(request.url);
-				const participant = url.searchParams.get('participant');
-				const searchParamsParticipant = participant ? JSON.parse(participant) : { id: crypto.randomUUID() };
 
-				const accepted = (await opts?.acceptConnection?.({ event, object: this })) || true;
-				if (!accepted) {
-					throw error('UNAUTHORIZED');
+				let { session: sessionData = {}, participant = { id: crypto.randomUUID() } } =
+					(await opts?.getSessionDataAndParticipant?.({ event, object: this })) || {};
+
+				if (!participant.id) {
+					participant.id = crypto.randomUUID();
 				}
-				const remoteParticipant = await opts?.getParticipant?.({ event: event, object: this });
-
 				session = {
 					id: crypto.randomUUID(),
-					participant: Object.assign({}, searchParamsParticipant, remoteParticipant || {}),
+					participant,
 					connected: true,
 					createdAt: Date.now(),
-					data: (await opts?.getSessionData?.({ event, object: this })) || {},
+					data: sessionData,
+					object,
 				};
-
 				serializeAttachment(server, session);
 				this.state.acceptWebSocket(server);
 				this.sendPresence();
@@ -138,7 +159,16 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 				await opts?.onMessage?.({ ws, session, message, object: this });
 				const handler = getHandler(topicsIn, String(type).split('.')) as Handler<any, any, any, any>;
 				const parsedData = await parse(handler?.schema, data);
-				await handler?.call({ session, ws } as any, parsedData, this);
+
+				await handler?.call(
+					{
+						session,
+						ws,
+						object: session.object,
+					} as any,
+					parsedData,
+					this,
+				);
 			} catch (error) {
 				opts?.onError?.({ error, ws, session, message, object: this });
 				const { body, status, statusText } = getErrorAsJson(error);

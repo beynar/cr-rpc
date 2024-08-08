@@ -1,12 +1,15 @@
 import type { Client, MaybePromise, Server } from './types';
 import { deform, form } from './deform';
 import { createWebSocketConnection } from './websocket';
+import { tryParse } from './utils';
 
-export type DObject = {
-	name?: string;
+export type DObject<O = string> = {
+	name?: O;
 	id?: string;
 	call: boolean;
 	websocket: boolean;
+	jurisdiction?: DurableObjectJurisdiction;
+	locationHint?: DurableObjectLocationHint;
 };
 
 const defaultObject = () => ({
@@ -75,7 +78,7 @@ export const createClient = <S extends Server>(
 		endpoint?: string;
 		headers?: HeadersInit | (<I = unknown>({ path, input }: { path: string; input: I }) => MaybePromise<HeadersInit>);
 		fetch?: typeof fetch;
-		onError?: (error: unknown) => void;
+		onError?: (error: unknown, response: Response) => void;
 	} = {
 		endpoint: '/api',
 		onError: () => {},
@@ -96,6 +99,9 @@ export const createClient = <S extends Server>(
 		return f(`${endpoint}/${path.join('/')}${method === 'GET' ? '' : ''}`, {
 			method,
 			body: method === 'GET' ? undefined : form(payload),
+			credentials: 'include',
+			keepalive: true,
+
 			headers: Object.assign(
 				{
 					'x-flarepc-client': 'true',
@@ -115,41 +121,51 @@ export const createClient = <S extends Server>(
 					: {},
 			),
 		}).then(async (res) => {
-			if (res.headers.get('content-type') === 'text/event-stream') {
-				const reader = res.body!.getReader();
-				const decoder = new TextDecoder();
-				let buffer = '';
-				let first = true;
-				const callback = (chunk: string, done: boolean) => {
-					if (done) {
-						return;
-					}
-					const lines = (buffer + chunk).split('\n');
-					buffer = lines.pop()!;
-					lines.forEach((line, i) => {
-						if (first && i === 0 && line === '') {
+			if (res.status !== 200) {
+				onError?.(
+					{
+						// @ts-ignore
+						...(await res.clone().json()),
+						status: res.status,
+						statusText: res.statusText,
+					},
+					// @ts-ignore
+					res.clone(),
+				);
+				throw new Error(res.statusText);
+			} else {
+				if (res.headers.get('content-type') === 'text/event-stream') {
+					const reader = res.body!.getReader();
+					const decoder = new TextDecoder();
+					let buffer = '';
+					let first = true;
+					const callback = (chunk: string, done: boolean) => {
+						if (done) {
 							return;
 						}
-						// (args[1] as any)({
-						// 	chunk: tryParse(line),
-						// 	first,
-						// });
-						first = false;
-					});
-				};
-				while (true) {
-					const { done, value } = await reader.read();
-					if (done) {
-						break;
+						const lines = (buffer + chunk).split('\n');
+						buffer = lines.pop()!;
+						lines.forEach((line, i) => {
+							if (first && i === 0 && line === '') {
+								return;
+							}
+							(callbackFunction as any)({
+								chunk: tryParse(line),
+								first,
+							});
+							first = false;
+						});
+					};
+					while (true) {
+						const { done, value } = await reader.read();
+						if (done) {
+							break;
+						}
+						callback(decoder.decode(value), done);
 					}
-					callback(decoder.decode(value), done);
-				}
-			} else if (res.headers.get('content-type')?.includes('multipart/form-data')) {
-				const formData = await res.formData();
-				if (res.ok) {
+				} else if (res.headers.get('content-type')?.includes('multipart/form-data')) {
+					const formData = await res.formData();
 					return deform(formData as FormData);
-				} else {
-					onError(res.clone());
 				}
 			}
 		});

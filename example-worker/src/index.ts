@@ -1,108 +1,169 @@
-import {
-	procedure,
-	createServer,
-	durableProcedure,
-	createDurableServer,
-	cors,
-	type InferDurableApi,
-	InferApiTypes,
-	socketiparse,
-} from 'flarepc';
-import { string, object, optional } from 'valibot';
-import type { DurableObject } from 'cloudflare:workers';
+import { procedure, createServer, durableProcedure, createDurableServer, cors, InferApiTypes, stream } from 'flarepc';
+import { string, object, optional, array } from 'valibot';
+import { DurableObject } from 'cloudflare:workers';
+import { type } from 'arktype';
+import { z } from 'zod';
 
-import { type, Out, Type } from 'arktype';
-
-const schema = type({
-	name: 'string',
-	platform: "'android' | 'ios'",
-	'versions?': '(number | string)[]',
-});
-
-interface Env {
-	TestDurable: DurableObject;
-}
+import Groq from 'groq-sdk';
 
 declare module 'flarepc' {
 	interface Register {
 		Env: Env;
 		Router: AppRouter;
-		Locals: {};
+		Locals: {
+			groq: Groq;
+		};
+		Participant: {
+			id: string;
+			name: 'ezaea';
+		};
 	}
 }
 
+const arkSchema = type({
+	name: 'string',
+	platform: "'android' | 'ios'",
+	'versions?': '(number | string)[]',
+});
+
+const zodSchema = z.object({
+	name: z.string(),
+	platform: z.enum(['android', 'ios']),
+	versions: z.array(z.string()),
+});
+
+const valibotSchema = object({
+	name: string(),
+	platform: optional(string(), 'android'),
+	versions: optional(array(string()), ['1', '2', '3']),
+});
+interface Env {
+	TestDurable: DurableObject;
+	GROQ_API_KEY: string;
+}
+
 const router = {
-	text: procedure().handle(async ({ event }) => {
-		return {
-			hello: 'world',
-		};
-	}),
+	text: procedure((event) => {
+		//
+	})
+		.input(z.string())
+		.handle(async ({ event, input }) => {
+			return {
+				hello: input,
+			};
+		}),
 };
 
-const routerProcedure = durableProcedure<TestDurable, 'router'>();
+const routerProcedure = durableProcedure<TestDurable>();
 const inProcedure = durableProcedure<TestDurable, 'in'>();
 const outProcedure = durableProcedure<TestDurable, 'out'>();
 
 const topicsIn = {
-	message: inProcedure()
+	message: inProcedure((event) => {
+		//
+	})
 		.input(object({ message: string() }))
-		.handle(({ input, object }) => {
+		.handle(({ input, object, event }) => {
 			console.log(input);
 		}),
-	noInput: inProcedure().handle(({ event, object }) => {
-		console.log('here');
-		object.send({ to: event.session?.participant.id }).message({ message: 'hello prout' });
-	}),
-	ark: inProcedure()
-		.input(schema)
-		.handle(({ event, input, object }) => {
-			console.log(input);
-			object.send({ to: event.session?.participant.id }).message({ message: JSON.stringify(input) });
-		}),
-	test: {
-		test: {
-			test: inProcedure()
-				.input(object({ name: string() }))
-				.handle(async ({ input, object, event }) => {
-					console.log(event.session?.id);
-				}),
-		},
+	paul: {
+		louis: inProcedure()
+			.input(object({ message: optional(string(), 'hello') }))
+			.handle(({ input, object, event }) => {
+				event.session.participant;
+				return {
+					hello: input.message,
+				};
+			}),
 	},
 };
 const topicsOut = {
-	message: outProcedure()
+	message: outProcedure((event) => {
+		//
+	})
 		.input(object({ message: optional(string(), 'hello') }))
 		.handle(({ input, object }) => {
 			return {
 				hello: input.message,
 			};
 		}),
-	test: {
-		test: outProcedure()
-			.input(object({ name: string() }))
+	paul: {
+		louis: outProcedure(() => {
+			//
+		})
+			.input(object({ message: optional(string(), 'hello') }))
 			.handle(({ input, object }) => {
 				return {
-					hello: input.name,
-				};
-			}),
-		test2: outProcedure()
-			.input(object({ name: string() }))
-			.handle(({ input, object }) => {
-				return {
-					hello: input.name,
+					hello: input.message,
 				};
 			}),
 	},
 };
 
 const durableRouter = {
+	validators: {
+		ark: routerProcedure((event) => {
+			//
+		})
+			.input(arkSchema)
+			.handle(({ input, object, event }) => {
+				console.log(object.ctx.storage);
+				return {
+					hello: input.name,
+				};
+			}),
+		zod: routerProcedure()
+			.input(zodSchema)
+			.handle(({ input, object, event }) => {
+				return {
+					hello: input.name,
+				};
+			}),
+		valibot: routerProcedure()
+			.input(valibotSchema)
+			.handle(({ input, object, event }) => {
+				return {
+					hello: input.name,
+				};
+			}),
+	},
+	ai: procedure()
+		.input(z.string())
+		.handle(async ({ input, event }) => {
+			const groq = new Groq({
+				apiKey: '',
+			});
+			const completion = await groq.chat.completions.create({
+				model: 'llama3-70b-8192',
+				max_tokens: 4,
+				messages: [
+					{ role: 'system', content: 'You are a helpful assistant.' },
+					{ role: 'user', content: input },
+				],
+				stream: true,
+			});
+			return await stream<Groq.Chat.ChatCompletionChunk>(completion.toReadableStream(), {
+				onChunk: ({ chunk, first }) => {
+					console.log('AI chunk received', chunk.choices[0].delta.content, first);
+				},
+				onEnd: (chunks) => {
+					console.log('AI stream ended', chunks);
+				},
+				onStart: () => {
+					console.log('AI stream started');
+				},
+			});
+		}),
 	test: {
 		test: {
 			test: routerProcedure()
 				.input(object({ name: string() }))
 				.handle(({ input, object, event }) => {
+					const counter = Number(event.cookies.get('counter')) || 0;
+					const counter2 = Number(event.cookies.get('counter2')) || 0;
+					event.cookies.set('counter', String(counter + 1));
+					event.cookies.set('counter2', String(counter2 + 1));
 					return {
-						object: object?.id,
 						hello: input.name,
 					};
 				}),
@@ -110,22 +171,21 @@ const durableRouter = {
 	},
 };
 export class TestDurable extends createDurableServer({}, topicsIn, topicsOut) {
+	test = true;
 	router = durableRouter;
 }
 
 export type AppRouter = typeof router;
 
 const server = createServer({
-	cors: cors({
-		origin: true,
-		credentials: true,
-	}),
+	cors: cors(),
 	objects: {
 		TestDurable: TestDurable,
 	},
 	router,
-	locals: () => ({
+	locals: (request, env) => ({
 		prod: true,
+		groq: {} as Groq,
 	}),
 });
 

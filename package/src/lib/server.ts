@@ -12,9 +12,11 @@ import {
 	MaybePromise,
 	DurableServer,
 	InferDurableApi,
+	GetObjectJurisdictionOrLocationHint,
 	Server,
+	ObjectInfo,
+	withCookies,
 } from '.';
-
 export const getHandler = (router: Router, path: string[]) => {
 	type H = Router | Handler<any, any, any> | undefined;
 	let handler: H = router;
@@ -31,25 +33,55 @@ type DurableObjects = Record<
 	}
 >;
 
-const getDurableServer = <O extends DurableObjects>(
+const getDurableServer = async <O extends DurableObjects>(
 	request: Request,
 	env: Env,
 	objects?: O,
-): [undefined | DurableObjectStub<DurableServer>, boolean] => {
-	if (!objects) return [undefined, false];
+	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint,
+): Promise<[undefined | DurableObjectStub<DurableServer>, boolean, ObjectInfo | undefined]> => {
+	if (!objects) return [undefined, false, undefined];
+	const isProduction = env['ENVIRONMENT' as keyof typeof env] === 'development';
 	const url = new URL(request.url);
-	const objectId = request.headers.get('x-flarepc-object-id') || url.searchParams.get('id');
+	const objectId = request.headers.get('x-flarepc-object-id') || url.searchParams.get('id') || 'DEFAULT';
 	const objectName = request.headers.get('x-flarepc-object-name') || url.searchParams.get('object');
 	const isWebSocketConnect = !!objectId && !!objectName && url.pathname.endsWith('/connect');
 
-	if (objectName && objectName in objects) {
-		const id = (env[objectName as keyof typeof env] as any).idFromName(objectId);
+	if (!objectName) return [undefined, false, undefined];
 
-		const stub = (env[objectName as keyof typeof env] as any).get(id) as DurableObjectStub<DurableServer>;
-		return [stub, isWebSocketConnect];
+	if (objectName && objectName in objects) {
+		let namespace = env[objectName as keyof typeof env] as any as DurableObjectNamespace<DurableServer>;
+		const { jurisdiction = undefined, locationHint = undefined } = (await getObjectJurisdictionOrLocationHint?.({
+			request,
+			object: {
+				name: objectName,
+				id: objectId,
+			},
+			env,
+		})) || {
+			jurisdiction: undefined,
+			locationHint: undefined,
+		};
+		const id = !!jurisdiction && isProduction ? namespace.jurisdiction(jurisdiction).idFromName(objectId) : namespace.idFromName(objectId);
+
+		const stub = (env[objectName as keyof typeof env] as any as DurableObjectNamespace<DurableServer>).get(
+			id,
+			isProduction ? { locationHint } : {},
+		) as DurableObjectStub<DurableServer>;
+
+		return [
+			stub,
+			isWebSocketConnect,
+			{
+				name: objectName,
+				id: objectId,
+				jurisdiction,
+				locationHint,
+			},
+		];
 	}
-	return [undefined, false];
+	return [undefined, false, undefined];
 };
+
 export const createServer = <R extends Router, O extends DurableObjects>({
 	router,
 	before = [],
@@ -58,6 +90,7 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 	cors,
 	catch: c,
 	objects,
+	getObjectJurisdictionOrLocationHint,
 }: {
 	router: R;
 	locals?: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>);
@@ -65,28 +98,34 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 	after?: ((response: Response, event: RequestEvent) => Response | void)[];
 	catch?: (error: unknown) => Response | void;
 	cors?: CorsPair;
+	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
 	objects?: O;
 }) => ({
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		const requestEvent = await createRequestEvent.bind(ctx)(request, env, ctx, locals);
-		let response: Response | undefined;
+		const [stub, isWebSocketConnect, object] = await getDurableServer(request, env, objects, getObjectJurisdictionOrLocationHint);
+		const requestEvent = await createRequestEvent(request, env, ctx, object, locals);
 
+		let response: Response | undefined;
 		$: try {
 			for (let handler of before.concat(cors?.preflight || []) || []) {
 				response = (await handler(requestEvent)) ?? response;
 				if (response) break $;
 			}
-			const [stub, isWebSocketConnect] = getDurableServer(request, env, objects);
 
-			if (stub) {
+			if (stub && object?.name && object?.id) {
 				if (isWebSocketConnect) {
 					const upgradeHeader = request.headers.get('Upgrade');
 					if (!upgradeHeader || upgradeHeader !== 'websocket') {
 						return new Response('Durable Object expected Upgrade: websocket', { status: 426 });
 					}
-					return stub.fetch(request);
+
+					const clone = request.clone();
+					Object.assign(clone.cf || {}, {
+						object,
+					});
+					return stub.fetch(clone);
 				} else {
-					response = await stub.handleRpc(request);
+					response = await stub.handleRpc(request, object);
 				}
 			} else {
 				const handler = getHandler(router, requestEvent.path);
@@ -105,7 +144,7 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 			response = (await handler(response!, requestEvent)) ?? response;
 		}
 
-		return response!;
+		return withCookies(response!, requestEvent);
 	},
 	infer: {} as {
 		router: R;

@@ -1,7 +1,8 @@
 import { procedure, createServer, durableProcedure, Router, RouterPaths, createDurableServer, SchemaInput, Handler, Schema } from './lib';
 import { string, object, map, BaseSchema, boolean, instance, number, undefined_, null_, date, set, optional } from 'valibot';
-import { createReceiver, createSender } from './lib';
-interface Env {}
+interface Env {
+	TestDurable: DurableObject;
+}
 
 const locals = {
 	prod: true,
@@ -115,7 +116,6 @@ const router = {
 		null: procedure()
 			.input(null_())
 			.handle(async ({ input }) => {
-				console.log({ input });
 				return {
 					hello: input,
 				};

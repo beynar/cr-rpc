@@ -1,4 +1,4 @@
-import { tryParse } from './utils';
+import { tryParse, tryStringify } from './utils';
 
 const httpErrorMap = {
 	BAD_REQUEST: { code: 400, message: 'Bad Request' },
@@ -46,7 +46,7 @@ export const getErrorAsJson = (
 	if (error instanceof FLARERROR) {
 		return {
 			body: JSON.stringify({
-				message: error.message,
+				error: error.message,
 			}),
 			status: httpErrorMap[error.code].code,
 			statusText: httpErrorMap[error.code].message,
