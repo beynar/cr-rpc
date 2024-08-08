@@ -99,7 +99,9 @@ export const createClient = <S extends Server>(
 		return f(`${endpoint}/${path.join('/')}${method === 'GET' ? '' : ''}`, {
 			method,
 			body: method === 'GET' ? undefined : form(payload),
+			// @ts-ignore
 			credentials: 'include',
+			// @ts-ignore
 			keepalive: true,
 
 			headers: Object.assign(
