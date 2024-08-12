@@ -1,7 +1,7 @@
-import type { Client, MaybePromise, Server } from './types';
-import { deform, form } from './deform';
+import { type Client, type MaybePromise, type Server } from './types';
 import { createWebSocketConnection } from './websocket';
 import { tryParse } from './utils';
+import { deform, form } from './deform';
 
 export type DObject<O = string> = {
 	name?: O;
@@ -107,9 +107,6 @@ export const createClient = <S extends Server>(
 						credentials: 'include',
 					}
 				: {}),
-
-			// @ts-ignore
-			keepalive: true,
 
 			headers: Object.assign(
 				{

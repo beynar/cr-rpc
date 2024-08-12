@@ -42,16 +42,14 @@ const valibotSchema = object({
 	platform: optional(string(), 'android'),
 	versions: optional(array(string()), ['1', '2', '3']),
 });
-versions: z.optional(z.array(z.string()));
+
 interface Env {
 	TestDurable: DurableObject;
 	GROQ_API_KEY: string;
 }
 
 const router = {
-	text: procedure((event) => {
-		//
-	})
+	text: procedure()
 		.input(z.string())
 		.handle(async ({ event, input }) => {
 			const t = event.queue('Queue').test.send(input);
@@ -110,16 +108,16 @@ const topicsOut = {
 
 const durableRouter = {
 	validators: {
-		ark: routerProcedure((event) => {
-			//
-		})
-			.input(arkSchema)
-			.handle(({ input, object, event }) => {
-				console.log(object.ctx.storage);
-				return {
-					hello: input.name,
-				};
-			}),
+		// ark: routerProcedure((event) => {
+		// 	//
+		// })
+		// 	.input(arkSchema)
+		// 	.handle(({ input, object, event }) => {
+		// 		console.log(object.ctx.storage);
+		// 		return {
+		// 			hello: input.name,
+		// 		};
+		// 	}),
 		zod: routerProcedure()
 			.input(zodSchema)
 			.handle(({ input, object, event }) => {
@@ -167,13 +165,8 @@ const durableRouter = {
 			test: routerProcedure()
 				.input(object({ name: string() }))
 				.handle(async ({ input, object, event }) => {
-					const file = await event.static.get('test.png', 'arrayBuffer');
-					const fileText = await event.static.get('package.json', 'json');
-
 					return {
 						hello: input.name,
-						file,
-						fileText,
 					};
 				}),
 		},

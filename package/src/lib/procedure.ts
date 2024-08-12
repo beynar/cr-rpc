@@ -1,3 +1,4 @@
+import { object, string } from 'valibot';
 import {
 	error,
 	DurableProcedureType,
@@ -16,12 +17,16 @@ export const parse = <S extends Schema | undefined>(schema: S, data: any) => {
 		return undefined;
 	} else {
 		// @ts-ignore
-		const parseResult = schema.safeParse?.(data) || schema._parse?.(data) || schema(data);
+		const parseResult = schema.safeParse?.(data) || schema._run?.({ value: data }, { abortEarly: true, abortPipeEarly: true });
 		const errors = parseResult?.error?.issues || parseResult.issues || parseResult.summary;
 		if (errors) {
 			throw error('BAD_REQUEST', errors);
 		}
-		return parseResult.data || parseResult.output || parseResult;
+		if ('_run' in schema) {
+			return parseResult.value;
+		} else {
+			return parseResult.data || parseResult.output || parseResult;
+		}
 	}
 };
 

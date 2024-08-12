@@ -1,7 +1,7 @@
 import type { DObject } from './client';
 import { socketify, socketiparse } from './deform';
-import { MessageHandlers, MessagePayload, Participant, Router, RouterPaths } from './types';
 import { WSAPI, createRecursiveProxy } from './wsProxy';
+import type { MessageHandlers, MessagePayload, Participant, Router, RouterPaths } from './types';
 
 export type WebSocketState = 'RECONNECTING' | 'CONNECTED' | 'CLOSED';
 

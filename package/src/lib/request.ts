@@ -100,6 +100,7 @@ export const handleRequest = async (event: DurableRequestEvent | RequestEvent, h
 		},
 	});
 	let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
 	const requestData =
 		method === 'GET'
 			? JSON.parse(decodeURIComponent(new URLSearchParams(url.search).get('input') || '{}'))

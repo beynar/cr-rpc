@@ -7,7 +7,7 @@ export type CacheControl = {
 	bypassCache: boolean;
 };
 
-export type Options = {
+export type StaticServerOptions = {
 	cacheControl: ((req: Request) => Partial<CacheControl>) | Partial<CacheControl>;
 	defaultETag: 'strong' | 'weak';
 	cacheBucket: 'DEFAULT' | (string & {});
@@ -22,7 +22,7 @@ const staticHandlerDefaultOptions = {
 	cacheControl: defaultCacheControl,
 	cacheBucket: 'DEFAULT',
 	defaultETag: 'strong',
-} satisfies Options;
+} satisfies StaticServerOptions;
 
 type IsoExecutionContext = ExecutionContext | DurableObjectState;
 
@@ -79,7 +79,7 @@ export class StaticHandler {
 	private kv?: KVNamespace;
 	private ctx: IsoExecutionContext;
 	private manifestPromise: Promise<unknown> | null;
-	private options: Options = staticHandlerDefaultOptions;
+	private options: StaticServerOptions = staticHandlerDefaultOptions;
 	manifest?: Record<string, string>;
 
 	private getManifest = async () => {
@@ -243,14 +243,14 @@ export class StaticHandler {
 			return null;
 		}
 	};
-	constructor(env: Env, ctx: IsoExecutionContext) {
+	constructor(env: Env, ctx: IsoExecutionContext, options?: StaticServerOptions) {
 		this.kv = (env as { __STATIC_CONTENT?: KVNamespace })['__STATIC_CONTENT'];
 		this.ctx = ctx;
 		try {
 			// @ts-ignore
 			this.manifestPromise = import('__STATIC_CONTENT_MANIFEST').then((manifest) => {
 				this.manifest = JSON.parse(manifest.default);
-				console.log(this.manifest);
+
 				this.manifestPromise = null;
 			});
 		} catch (error) {
@@ -260,9 +260,11 @@ export class StaticHandler {
 	}
 }
 
-export const serveStaticAsset = (event: RequestEvent): Promise<Response | void> | void => {
-	if (event.url.pathname.startsWith('/static/')) {
-		const handler = new StaticHandler(event, event);
-		return handler.serve(event.request);
-	}
-};
+export const createStaticServer =
+	(options?: StaticServerOptions) =>
+	(event: RequestEvent): Promise<Response | void> | void => {
+		if (event.url.pathname.startsWith('/static/')) {
+			const handler = new StaticHandler(event, event, options);
+			return handler.serve(event.request);
+		}
+	};

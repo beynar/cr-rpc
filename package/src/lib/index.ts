@@ -12,3 +12,4 @@ export * from './stream';
 export * from './wsProxy';
 export * from './static';
 export * from './queue';
+export * from './utils';

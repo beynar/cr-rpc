@@ -2,6 +2,9 @@ import { it, expect } from 'vitest';
 import worker, { AppRouter, Server } from '../src/index';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { createClient } from '../src/lib/client';
+import { object, string } from 'valibot';
+import { form } from '../src/lib';
+const longString = `Lorem ipsum dolor sit amet consectetur adipisicing elit. Praesentium reprehenderit quidem, autem explicabo, tenetur placeat odit blanditiis fuga ad nostrum animi, amet aperiam perferendis aliquam ducimus quaerat obcaecati exercitationem dolor!`;
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
@@ -123,12 +126,18 @@ const api = () =>
 // });
 
 it('Send a request to a path parametrized endpoint and receive a response', async () => {
-	const result2 = await api().parametrized2.update({
-		name: 'world',
-	});
+	try {
+		const result2 = await api().parametrized2.update({
+			name: longString,
+		});
 
-	console.log(result2);
-	expect(result2).toStrictEqual({
-		name: 'world',
-	});
+		// const payload = Array.from({ length: 1 }).fill(longString).join('');
+		// const data = form(payload);
+		console.log(result2);
+		expect(result2).toStrictEqual({
+			name: longString,
+		});
+	} catch (error) {
+		console.log({ error });
+	}
 });

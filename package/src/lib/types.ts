@@ -1,12 +1,10 @@
-import type { Cookies } from './cookies';
-import type { Input as VInput, Output as VOutput, BaseSchema as VSchema } from 'valibot';
-import type { Schema as ZSchema, infer as ZOutput, input as ZInput } from 'zod';
-import { Type as ASchema } from 'arktype';
-import { Handler } from './procedure';
-import { ConnectOptions, WebSocketClient } from './websocket';
-import { createDurableServer } from './durable';
-import { StaticHandler, QueueHandler } from '.';
 import type { Queue } from '@cloudflare/workers-types';
+import type { InferInput as VInput, InferOutput as VOutput, BaseSchema as VSchema } from 'valibot';
+import type { Schema as ZSchema, infer as ZOutput, input as ZInput } from 'zod';
+// import type { Type as ASchema } from 'arktype';
+
+import { Handler, Cookies, StaticHandler, QueueHandler, createDurableServer, ConnectOptions, WebSocketClient } from '.';
+
 export interface Register {}
 
 export type Env = Register extends {
@@ -68,21 +66,17 @@ export type Queues = Register extends {
 export type ProcedureTarget = DurableServer | Queue | undefined;
 export type DurableServer = ReturnType<typeof createDurableServer>['prototype'];
 
-export type Schema = ZSchema | VSchema | ASchema;
-export type SchemaInput<S extends Schema> = S extends ASchema
-	? S['inferIn']
-	: S extends ZSchema
-		? ZInput<S>
-		: S extends VSchema
-			? VInput<S>
-			: never;
-export type SchemaOutput<S extends Schema> = S extends ASchema
-	? S['infer']
-	: S extends ZSchema
-		? ZOutput<S>
-		: S extends VSchema
-			? VOutput<S>
-			: never;
+export type Schema = ZSchema | VSchema<any, any, any>;
+export type SchemaInput<S extends Schema> = S extends ZSchema
+	? ZInput<S>
+	: S extends VSchema<infer I, infer O, infer V>
+		? VInput<S>
+		: never;
+export type SchemaOutput<S extends Schema> = S extends ZSchema
+	? ZOutput<S>
+	: S extends VSchema<infer I, infer O, infer V>
+		? VOutput<S>
+		: never;
 
 export type MaybePromise<T> = T | Promise<T>;
 
@@ -358,15 +352,16 @@ export type PickKeyType<Source extends unknown, TargetType> = {
 export type QueuesRouter = {
 	[K in PickKeyType<Env, Queue>]: Router;
 };
-// export type QueueConsumers = Record<PickKeyType<Env, Queue>, QueueRouter>;
 
-// type QueueApi<R extends QueueRouter> = {
-// 	[K in keyof R]: R[K] extends Schema
-// 		? (payload: SchemaInput<R[K]>) => SchemaOutput<R[K]>
-// 		: R[K] extends QueueRouter
-// 			? QueueApi<R[K]>
-// 			: never;
-// };
-// export type QueuesApi = {
-// 	[K in keyof QueueConsumers]: QueueApi<QueueConsumers[K]>;
-// };
+export type QueueApi<R extends Router> = {
+	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D, infer T>
+		? S extends Schema
+			? {
+					sendBatch: (payload: SchemaInput<S>[], delay?: number) => Promise<void>;
+					send: (payload: SchemaInput<S>, delay?: number) => Promise<void>;
+				}
+			: () => void
+		: R[K] extends Router
+			? QueueApi<R[K]>
+			: R[K];
+};

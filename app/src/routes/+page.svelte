@@ -4,26 +4,26 @@
 
 	let ws = $state<API['TestDurable']['ws']>();
 
-	// onMount(async () => {
-	// 	const wes = await api.TestDurable('test').connect({
-	// 		dedupeConnection: true,
-	// 		onError(error) {
-	// 			console.log(error);
-	// 		},
-	// 		onPresence: (data) => {
-	// 			console.log('presence', data, 'helleaeazlea');
-	// 		},
-	// 		handlers: {
-	// 			message: ({ data, ctx }) => {
-	// 				console.log(data);
-	// 			},
-	// 			paul: {
-	// 				louis: ({ data, ctx }) => {}
-	// 			}
-	// 		}
-	// 	});
-	// 	ws = wes;
-	// });
+	onMount(async () => {
+		const wes = await api.TestDurable('test').connect({
+			dedupeConnection: true,
+			onError(error) {
+				console.log(error);
+			},
+			onPresence: (data) => {
+				console.log('presence', data, 'helleaeazlea');
+			},
+			handlers: {
+				message: ({ data, ctx }) => {
+					console.log(data);
+				},
+				paul: {
+					louis: ({ data, ctx }) => {}
+				}
+			}
+		});
+		ws = wes;
+	});
 </script>
 
 <img src="http://localhost:8080/static/test.png" alt="test" />
@@ -90,8 +90,10 @@
 	<button
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
+			const activityGraph = document.querySelector('#activity-graph');
+			const html = activityGraph?.outerHTML;
 			const result = await api.TestDurable('test').test.test.test({
-				name: 'world'
+				name: 'html as string'
 			});
 			console.log(result);
 		}}

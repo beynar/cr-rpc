@@ -1,30 +1,4 @@
-import {
-	createRecursiveProxy,
-	getHandler,
-	parse,
-	error,
-	Handler,
-	PickKeyType,
-	Queues,
-	Router,
-	Schema,
-	SchemaInput,
-	Env,
-	socketify,
-} from '.';
-
-export type QueueApi<R extends Router> = {
-	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D, infer T>
-		? S extends Schema
-			? {
-					sendBatch: (payload: SchemaInput<S>[], delay?: number) => Promise<void>;
-					send: (payload: SchemaInput<S>, delay?: number) => Promise<void>;
-				}
-			: () => void
-		: R[K] extends Router
-			? QueueApi<R[K]>
-			: R[K];
-};
+import { createRecursiveProxy, getHandler, parse, error, Handler, PickKeyType, Queues, QueueApi, Env, socketify } from '.';
 
 const createBatches = (data: string[]) => {
 	const maxItemsPerBatch = 100;

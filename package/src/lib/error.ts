@@ -1,4 +1,4 @@
-import { tryParse, tryStringify } from './utils';
+import { tryParse } from '.';
 
 const httpErrorMap = {
 	BAD_REQUEST: { code: 400, message: 'Bad Request' },

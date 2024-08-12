@@ -1,5 +1,5 @@
 // Shamelessly copied and slightly adapted from https://github.com/kwhitley/itty-router
-import { RequestEvent } from './types';
+import { MaybePromise, RequestEvent } from '.';
 
 export type CorsOptions = {
 	credentials?: true;
@@ -10,7 +10,7 @@ export type CorsOptions = {
 	exposeHeaders?: string | string[];
 };
 
-export type Preflight = (event: RequestEvent) => Response | void;
+export type Preflight = (event: RequestEvent) => MaybePromise<Response | void>;
 export type Corsify = (response: Response, event: RequestEvent) => Response | void;
 
 export type CorsPair = {

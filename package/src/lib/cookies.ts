@@ -1,4 +1,4 @@
-import { type CookieSerializeOptions, serialize, parse } from 'cookie';
+import { type CookieSerializeOptions, serialize } from 'cookie';
 
 export class Cookies {
 	requestCookies: Map<string, string>;

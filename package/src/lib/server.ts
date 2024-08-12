@@ -21,8 +21,8 @@ import {
 	parse,
 	createQueueRequestEvent,
 	Queues,
-	StaticHandler,
-	serveStaticAsset,
+	StaticServerOptions,
+	createStaticServer,
 } from '.';
 export const getHandler = (router: Router, path: string[]) => {
 	type H = Router | Handler<any, any, any> | undefined;
@@ -99,19 +99,21 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 	objects,
 	getObjectJurisdictionOrLocationHint,
 	queues,
+	static: staticOptions,
 }: {
 	router: R;
 	locals?: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>);
-	before?: ((event: RequestEvent) => Response | void)[];
-	after?: ((response: Response, event: RequestEvent) => Response | void)[];
+	before?: ((event: RequestEvent) => MaybePromise<Response | void>)[];
+	after?: ((response: Response, event: RequestEvent) => MaybePromise<Response | void>)[];
 	catch?: (error: unknown) => Response | void;
 	cors?: CorsPair | false;
 	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
 	objects?: O;
 	queues?: Queues;
+	static?: StaticServerOptions;
 }) => ({
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		// Cors are enabled by default with sensible default to smoothen the usage and allows cookies to be used.
+		// Cors are enabled by default with very permissive options to smoothen the usage and allows cookies to be used.
 		if (!cors && cors !== false) {
 			cors = corsHandler();
 		}
@@ -120,8 +122,7 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 
 		let response: Response | undefined;
 		$: try {
-			// @ts-ignore
-			for (let handler of (before.concat((cors as CorsPair)?.preflight || []) || []).concat(serveStaticAsset)) {
+			for (let handler of before.concat((cors as CorsPair)?.preflight || [], createStaticServer(staticOptions)) || []) {
 				response = (await handler(requestEvent)) ?? response;
 				if (response) break $;
 			}

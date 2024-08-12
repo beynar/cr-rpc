@@ -175,9 +175,9 @@ const Queue = {
 const server = createServer({
 	router,
 	locals,
-	queues: {
-		Queue,
-	},
+	// queues: {
+	// 	Queue,
+	// },
 });
 
 export type Server = typeof server.infer;

@@ -1,5 +1,5 @@
-import { StreamCallbacks } from './types';
-import { tryParse } from './utils';
+import { type StreamCallbacks, tryParse } from '.';
+
 export const stream = <C>(result: ReadableStream<C>, callbacks?: StreamCallbacks<C>) => {
 	const streamReader = result.getReader();
 	const chunks: C[] = [];

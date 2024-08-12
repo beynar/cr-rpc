@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-	entry: ['src/lib/index.ts', 'src/lib/client.ts', 'src/lib/cors.ts'],
+	entry: ['src/lib/index.ts', 'src/lib/client.ts', 'src/lib/types.ts'],
 	splitting: false,
 	skipNodeModulesBundle: false,
 	dts: true,
@@ -12,7 +12,7 @@ export default defineConfig({
 	platform: 'browser',
 	external: ['cloudflare:workers', '__STATIC_CONTENT_MANIFEST'],
 	keepNames: false,
-	minify: true,
+	minify: false,
 	sourcemap: true,
 	format: ['cjs', 'esm'],
 	treeshake: true,

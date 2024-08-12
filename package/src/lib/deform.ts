@@ -1,5 +1,5 @@
 import { stringify, parse } from 'devalue';
-import { Session } from './types';
+import { Session } from '.';
 const url = {
 	stringify: (value: any) => {
 		if (value instanceof URL) {
