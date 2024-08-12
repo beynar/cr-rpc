@@ -10,7 +10,7 @@ export default defineConfig({
 	minifySyntax: true,
 	minifyWhitespace: true,
 	platform: 'browser',
-	external: ['cloudflare:workers'],
+	external: ['cloudflare:workers', '__STATIC_CONTENT_MANIFEST'],
 	keepNames: false,
 	minify: true,
 	sourcemap: true,

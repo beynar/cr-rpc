@@ -8,6 +8,7 @@ const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 const api = () =>
 	createClient<Server>({
 		endpoint: 'https://example.com',
+		includeCredentials: false,
 		// @ts-ignore
 		fetch: async (_endpoint: any, body: any) => {
 			const request = new IncomingRequest(_endpoint, body);

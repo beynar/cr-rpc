@@ -8,6 +8,7 @@ import {
 	ReturnOfMiddlewares,
 	Schema,
 	SchemaInput,
+	ProcedureTarget,
 } from '.';
 
 export const parse = <S extends Schema | undefined>(schema: S, data: any) => {
@@ -26,7 +27,7 @@ export const parse = <S extends Schema | undefined>(schema: S, data: any) => {
 
 export const useMiddlewares = async <
 	M extends Middleware<D, T>[],
-	D extends DurableServer | undefined = undefined,
+	D extends ProcedureTarget = undefined,
 	T extends DurableProcedureType = undefined,
 >(
 	middlewares: M,
@@ -44,7 +45,7 @@ export const useMiddlewares = async <
 const createHandler = <
 	S extends Schema | undefined,
 	M extends Middleware<D, T>[],
-	D extends DurableServer | undefined = undefined,
+	D extends ProcedureTarget = undefined,
 	T extends DurableProcedureType = undefined,
 >(
 	middlewares: M,
@@ -55,11 +56,7 @@ const createHandler = <
 	};
 };
 
-export const procedure = <
-	M extends Middleware<D, T>[],
-	D extends DurableServer | undefined = undefined,
-	T extends DurableProcedureType = undefined,
->(
+export const procedure = <M extends Middleware<D, T>[], D extends ProcedureTarget = undefined, T extends DurableProcedureType = undefined>(
 	...middlewares: M
 ) => {
 	return {
@@ -79,11 +76,16 @@ export const durableProcedure = <D extends DurableServer, T extends DurableProce
 		return procedure<M, D, T>(...middlewares);
 	};
 };
+
+export const queueProcedure = <M extends Middleware<Queue>[]>(...middlewares: M) => {
+	return procedure<M, Queue>(...middlewares);
+};
+
 export class Handler<
 	M extends Middleware<D, T>[],
 	S extends Schema | undefined,
 	const H extends HandleFunction<S, M, D, T>,
-	D extends DurableServer | undefined = undefined,
+	D extends ProcedureTarget = undefined,
 	T extends DurableProcedureType = undefined,
 > {
 	middlewares: M;

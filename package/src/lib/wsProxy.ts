@@ -1,7 +1,10 @@
 import { Handler } from './procedure';
 import { Router, Schema, SchemaInput } from './types';
 
-export const createRecursiveProxy = (callback: (opts: { type: string; data: unknown[] }) => unknown, path: string[] = []) => {
+export const createRecursiveProxy = (
+	callback: (opts: { type: string; data: unknown[]; opts?: unknown }) => unknown,
+	path: string[] = [],
+) => {
 	const proxy: unknown = new Proxy(() => {}, {
 		get(_obj, key) {
 			if (typeof key !== 'string') return undefined;
@@ -11,6 +14,7 @@ export const createRecursiveProxy = (callback: (opts: { type: string; data: unkn
 			return callback({
 				type: path.join('.'),
 				data: args[0],
+				opts: args[1],
 			});
 		},
 	});

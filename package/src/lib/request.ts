@@ -11,6 +11,10 @@ import {
 	form,
 	ObjectInfo,
 	Cookies,
+	Queues,
+	StaticHandler,
+	QueueRequestEvent,
+	QueueHandler,
 } from '.';
 
 const getPathAndUrl = (request: Request, isObject: boolean) => {
@@ -31,28 +35,58 @@ export async function createRequestEvent(
 	env: Env,
 	ctx: ExecutionContext,
 	object: ObjectInfo | undefined,
+	queues?: Queues,
 	locals?: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>),
 ): Promise<RequestEvent> {
 	const [path, url] = getPathAndUrl(request, false);
 	return Object.assign(ctx, env, {
 		path,
 		locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals,
+		queue: new QueueHandler(env, ctx, queues).send,
 		request,
+		static: new StaticHandler(env, ctx),
 		object,
 		url,
 		cookies: createCookies(request),
 	});
 }
 
-export const createDurableRequestEvent = (request: Request, object?: ObjectInfo): DurableRequestEvent => {
+export const createDurableRequestEvent = (request: Request, env: Env, ctx: DurableObjectState, object: ObjectInfo): DurableRequestEvent => {
 	const [path, url] = getPathAndUrl(request, true);
 	return {
 		path,
 		object,
+		static: new StaticHandler(env, ctx),
 		request,
 		url,
 		cookies: new Cookies(request),
 	};
+};
+
+export const createQueueRequestEvent = (
+	batch: MessageBatch,
+	path: string[],
+	message: Message<unknown>,
+	ctx: ExecutionContext,
+	env: Env,
+	object: ObjectInfo,
+	locals?: Locals,
+): QueueRequestEvent => {
+	return Object.assign(
+		{
+			waitUntil: ctx.waitUntil.bind(ctx),
+			passThroughOnException: ctx.passThroughOnException.bind(ctx),
+		},
+		env,
+		{
+			path,
+			static: new StaticHandler(env, ctx),
+			batch,
+			message,
+			object,
+			locals,
+		},
+	);
 };
 
 export const handleRequest = async (event: DurableRequestEvent | RequestEvent, handler: Handler<any, any, any, any>, object?: any) => {

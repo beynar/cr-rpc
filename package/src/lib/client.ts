@@ -102,7 +102,12 @@ export const createClient = <S extends Server>(
 			method,
 			body: method === 'GET' ? undefined : form(payload),
 			// @ts-ignore
-			credentials: includeCredentials ? 'include' : 'omit',
+			...(includeCredentials
+				? {
+						credentials: 'include',
+					}
+				: {}),
+
 			// @ts-ignore
 			keepalive: true,
 

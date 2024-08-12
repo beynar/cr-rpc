@@ -10,3 +10,5 @@ export * from './cookies';
 export * from './cors';
 export * from './stream';
 export * from './wsProxy';
+export * from './static';
+export * from './queue';

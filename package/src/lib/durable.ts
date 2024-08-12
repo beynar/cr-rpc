@@ -20,6 +20,7 @@ import {
 	socketiparse,
 	ObjectInfo,
 	withCookies,
+	Locals,
 } from '.';
 
 type SendOptions = {
@@ -27,26 +28,31 @@ type SendOptions = {
 	omit?: string | string[];
 };
 
-export const createDurableServer = <_IN extends Router, _OUT extends Router>(
-	opts: DurableOptions & {
-		in: _IN;
-		out: _OUT;
-	},
-) => {
+export const createDurableServer = <_IN extends Router, _OUT extends Router>(opts: DurableOptions) => {
 	return class DurableServer<R extends Router = Router, IN extends _IN = _IN, OUT extends _OUT = _OUT> extends DurableObject<any> {
 		public ctx: DurableObjectState;
 		public env: Env;
+		// @ts-expect-error this will be set in the constructor by blockConcurrency if needed
+		locals: Locals;
 		// @ts-ignore
 		id: string;
 		state: DurableObjectState;
 		storage: DurableObjectStorage;
 
 		router?: R;
-		topicsIn?: IN;
-		topicsOut?: OUT;
+		topicsIn?: _IN;
+		topicsOut?: _OUT;
 
 		constructor(ctx: DurableObjectState, env: Env) {
 			super(ctx, env);
+			const locals = opts.locals;
+			if (typeof locals === 'function') {
+				ctx.blockConcurrencyWhile(async () => {
+					this.locals = await locals(env, ctx);
+				});
+			} else if (locals) {
+				this.locals = locals;
+			}
 			this.state = ctx;
 			this.storage = ctx.storage;
 			this.env = env;
@@ -62,7 +68,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(
 			},
 		) =>
 			createRecursiveProxy(async ({ type, data }) => {
-				if (!opts.out) {
+				if (!this.topicsOut) {
 					throw error('SERVICE_UNAVAILABLE');
 				}
 				const sessions = this.getSessions().filter(({ ws, session }) => {
@@ -81,7 +87,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(
 
 				if (sessions.length) {
 					const [{ session }] = sessions;
-					const handler = getHandler(opts.out, type.split('.')) as Handler<any, any, any, any>;
+					const handler = getHandler(this.topicsOut, type.split('.')) as Handler<any, any, any, any>;
 					const parsedData = await parse(handler?.schema, data);
 					const ctx = await handler?.call(
 						{
@@ -98,8 +104,8 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(
 				}
 			}) as WSAPI<_OUT>;
 
-		async handleRpc(request: Request, object?: ObjectInfo) {
-			const requestEvent = createDurableRequestEvent(request, object);
+		async handleRpc(request: Request, object: ObjectInfo) {
+			const requestEvent = createDurableRequestEvent(request, this.env, this.ctx, object);
 			try {
 				if (!this.router) {
 					throw error('SERVICE_UNAVAILABLE');
@@ -124,7 +130,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(
 			try {
 				const [client, server] = Object.values(new WebSocketPair());
 				ws = server;
-				const event = createDurableRequestEvent(request);
+				const event = createDurableRequestEvent(request, this.env, this.ctx, object);
 
 				let { session: sessionData = {}, participant = { id: crypto.randomUUID() } } =
 					(await opts?.getSessionDataAndParticipant?.({ event, object: this })) || {};
@@ -157,12 +163,12 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(
 		async webSocketMessage(ws: WebSocket, message: string): Promise<void> {
 			const { type, data } = socketiparse(message as string);
 			const session = deserializeAttachment(ws);
-			if (!opts.in) {
+			if (!this.topicsIn) {
 				throw error('SERVICE_UNAVAILABLE');
 			}
 			try {
 				await opts?.onMessage?.({ ws, session, message, object: this });
-				const handler = getHandler(opts.in, String(type).split('.')) as Handler<any, any, any, any>;
+				const handler = getHandler(this.topicsIn, String(type).split('.')) as Handler<any, any, any, any>;
 				const parsedData = await parse(handler?.schema, data);
 
 				await handler?.call(

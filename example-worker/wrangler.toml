@@ -3,6 +3,9 @@ name = "example-worker"
 main = "src/index.ts"
 compatibility_date = "2024-07-29"
 
+[site]
+bucket = "./public"
+
 [vars]
 GROQ_API_KEY = ""
 # Automatically place your workloads in an optimal location to minimize latency.

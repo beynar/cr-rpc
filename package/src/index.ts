@@ -1,14 +1,20 @@
-import { procedure, createServer, durableProcedure, Router, RouterPaths, createDurableServer, SchemaInput, Handler, Schema } from './lib';
-import { string, object, map, BaseSchema, boolean, instance, number, undefined_, null_, date, set, optional } from 'valibot';
-interface Env {
-	TestDurable: DurableObject;
-}
+import { procedure, createServer, queueProcedure } from './lib';
+import { string, object, map, BaseSchema, boolean, instance, number, undefined_, null_, date, set } from 'valibot';
 
 const locals = {
 	prod: true,
 };
-type Locals = typeof locals;
 
+declare global {
+	type Locals = typeof locals;
+
+	interface Env {
+		Queue: Queue;
+	}
+	type Queues = {
+		Queue: typeof Queue;
+	};
+}
 const router = {
 	text: procedure().handle(async ({ event }) => {
 		return {
@@ -156,76 +162,23 @@ const router = {
 	},
 };
 
-const testProcedure = durableProcedure<TestDurable>();
-
-const topicsIn = {
-	message: testProcedure()
-		.input(object({ message: string() }))
-		.handle(({ input, object }) => {
-			object.send('message', { message: input.message });
-			return {
-				hello: input.message,
-			};
-		}),
-};
-const topicsOut = {
-	message: testProcedure()
-		.input(object({ message: optional(string(), 'hello') }))
-		.handle(({ input, object }) => {
-			object.send('message', { message: input.message });
-			return {
-				hello: input.message,
-			};
-		}),
-	test: {
-		test: testProcedure()
-			.input(object({ name: string() }))
-			.handle(({ input, object }) => {
-				object.send('message', {
-					message: 'input.name',
-				});
-				return {
-					hello: input.name,
-				};
-			}),
-	},
-};
-
-const durableRouter = {
-	test: {
-		test: {
-			test: testProcedure()
-				.input(object({ name: string() }))
-				.handle(({ input, object }) => {
-					return {
-						hello: input.name,
-					};
-				}),
-		},
-	},
-};
-export class TestDurable extends createDurableServer({}, topicsIn, topicsOut) {
-	router = durableRouter;
-}
-
 export type AppRouter = typeof router;
 
+const Queue = {
+	test: queueProcedure()
+		.input(string())
+		.handle(async ({ input, event }) => {
+			console.log(input);
+		}),
+};
+
 const server = createServer({
-	objects: {
-		TestDurable: TestDurable,
-	},
 	router,
 	locals,
+	queues: {
+		Queue,
+	},
 });
 
-export type Server = {
-	router: AppRouter;
-	objects: {
-		TestDurable: {
-			router: typeof router;
-			in: typeof topicsIn;
-			out: typeof topicsOut;
-		};
-	};
-};
+export type Server = typeof server.infer;
 export default server;

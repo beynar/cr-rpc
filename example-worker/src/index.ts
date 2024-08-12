@@ -1,4 +1,4 @@
-import { procedure, createServer, durableProcedure, createDurableServer, cors, InferApiTypes, stream } from 'flarepc';
+import { procedure, createServer, durableProcedure, createDurableServer, cors, InferApiTypes, stream, queueProcedure } from 'flarepc';
 import { string, object, optional, array } from 'valibot';
 import { DurableObject } from 'cloudflare:workers';
 import { type } from 'arktype';
@@ -8,14 +8,19 @@ import Groq from 'groq-sdk';
 
 declare module 'flarepc' {
 	interface Register {
-		Env: Env;
+		Env: {
+			Queue: Queue;
+		};
 		Router: AppRouter;
 		Locals: {
 			groq: Groq;
 		};
 		Participant: {
 			id: string;
-			name: 'ezaea';
+			name: string;
+		};
+		Queues: {
+			Queue: typeof Queue;
 		};
 	}
 }
@@ -49,6 +54,8 @@ const router = {
 	})
 		.input(z.string())
 		.handle(async ({ event, input }) => {
+			const t = event.queue('Queue').test.send(input);
+			event.queue('Queue').test.sendBatch([input]);
 			return {
 				hello: input,
 			};
@@ -88,8 +95,8 @@ const topicsOut = {
 				hello: input.message,
 			};
 		}),
-	paul: {
-		louis: outProcedure(() => {
+	arn: {
+		aud: outProcedure(() => {
 			//
 		})
 			.input(object({ message: optional(string(), 'hello') }))
@@ -159,26 +166,32 @@ const durableRouter = {
 		test: {
 			test: routerProcedure()
 				.input(object({ name: string() }))
-				.handle(({ input, object, event }) => {
-					const counter = Number(event.cookies.get('counter')) || 0;
-					const counter2 = Number(event.cookies.get('counter2')) || 0;
-					event.cookies.set('counter', String(counter + 1));
-					event.cookies.set('counter2', String(counter2 + 1));
-					console.log({ counter, counter2 });
+				.handle(async ({ input, object, event }) => {
+					const file = await event.static.get('test.png', 'arrayBuffer');
+					const fileText = await event.static.get('package.json', 'json');
+
 					return {
 						hello: input.name,
+						file,
+						fileText,
 					};
 				}),
 		},
 	},
 };
-export class TestDurable extends createDurableServer({
-	in: topicsIn,
-	out: topicsOut,
-}) {
-	test = true;
+export class TestDurable extends createDurableServer({}) {
+	topicsOut = topicsOut;
+	topicsIn = topicsIn;
 	router = durableRouter;
 }
+
+const Queue = {
+	test: queueProcedure()
+		.input(string())
+		.handle(async ({ input, event }) => {
+			console.log(event.batch);
+		}),
+};
 
 export type AppRouter = typeof router;
 
@@ -188,10 +201,15 @@ const server = createServer({
 		TestDurable: TestDurable,
 	},
 	router,
-	locals: (request, env) => ({
-		prod: true,
-		groq: {} as Groq,
-	}),
+	locals: (request, env) => {
+		return {
+			prod: true,
+			groq: {} as Groq,
+		};
+	},
+	queues: {
+		Queue,
+	},
 });
 
 export type Server = typeof server.infer;

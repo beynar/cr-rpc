@@ -17,6 +17,12 @@ import {
 	cors as corsHandler,
 	ObjectInfo,
 	withCookies,
+	socketiparse,
+	parse,
+	createQueueRequestEvent,
+	Queues,
+	StaticHandler,
+	serveStaticAsset,
 } from '.';
 export const getHandler = (router: Router, path: string[]) => {
 	type H = Router | Handler<any, any, any> | undefined;
@@ -92,6 +98,7 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 	catch: c,
 	objects,
 	getObjectJurisdictionOrLocationHint,
+	queues,
 }: {
 	router: R;
 	locals?: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>);
@@ -101,18 +108,20 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 	cors?: CorsPair | false;
 	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
 	objects?: O;
+	queues?: Queues;
 }) => ({
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		// Cors are enabled by default with sensible default  to smoothen the usage and allow usage of cookies.
+		// Cors are enabled by default with sensible default to smoothen the usage and allows cookies to be used.
 		if (!cors && cors !== false) {
 			cors = corsHandler();
 		}
 		const [stub, isWebSocketConnect, object] = await getDurableServer(request, env, objects, getObjectJurisdictionOrLocationHint);
-		const requestEvent = await createRequestEvent(request, env, ctx, object, locals);
+		const requestEvent = await createRequestEvent(request, env, ctx, object, queues, locals);
 
 		let response: Response | undefined;
 		$: try {
-			for (let handler of before.concat((cors as CorsPair)?.preflight || []) || []) {
+			// @ts-ignore
+			for (let handler of (before.concat((cors as CorsPair)?.preflight || []) || []).concat(serveStaticAsset)) {
 				response = (await handler(requestEvent)) ?? response;
 				if (response) break $;
 			}
@@ -157,4 +166,28 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 			[K in keyof O]: InferDurableApi<O[K]['prototype']>;
 		};
 	} satisfies Server,
+	queues: queues
+		? {
+				async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
+					const _locals = typeof locals === 'function' ? await locals(new Request('$__QUEUE_REQUEST___$'), env, ctx) : locals;
+					return Promise.all(
+						batch.messages.map(async (message) => {
+							if (typeof message.body === 'string') {
+								const { type, payload } = socketiparse(message.body);
+								const path = type.split('.');
+								const handler = getHandler(queues, path) as Handler<any, any, any, any, any>;
+								if (!handler) {
+									error('NOT_FOUND');
+								} else {
+									return await handler.call(
+										createQueueRequestEvent(batch, path, message, ctx, env, _locals) as any,
+										parse(handler?.schema, payload),
+									);
+								}
+							}
+						}),
+					);
+				},
+			}
+		: undefined,
 });

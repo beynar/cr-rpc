@@ -29,26 +29,20 @@ packages:
 </CodeGroup>
   </Step>
   <Step title="Create a worker beside the app">
-
 <CodeGroup>
 
-```yaml pnpm-workspace (root)
-packages:
-  - "app"
-  - "worker"
+```bash pnpm
+pnpm create cloudflare@latest worker
 ```
 
-```json package.json (app)
-{
-  "dependencies": {
-    "worker": "workspace:*"
-  }
-}
+```bash npm
+npm create cloudflare@latest worker
+
 ```
 
 </CodeGroup>
   </Step>
-  <Step title="Install">
+  <Step title="Install inside your app and your worker">
 
 <CodeGroup>
 
@@ -70,7 +64,9 @@ yarn add flarepc
 
 ## Usage
 
-### Schema
+### Worker
+
+#### Schema
 
 Flarepc works with some major validations librairies out of the box: Zod, ArkType and Valibot.
 
@@ -105,7 +101,7 @@ const schema = object({
 
 </CodeGroup>
 
-### Worker
+#### Server
 
 ```typescript worker index.ts
 import { procedure, createServer, InferApiTypes } from "flarepc";
@@ -127,14 +123,16 @@ const router = {
 const server = createServer({
   router
 });
+export default server;
 
 // Types that will be used in your application
 export type Server = typeof server.infer;
 export type API = InferApiTypes<Server>;
-export default server;
 ```
 
 ### Application
+
+#### Create the client
 
 ```typescript app src/api.ts
 import { createClient } from "flarepc/client";
@@ -144,12 +142,15 @@ export const api = createClient<Server>({
   // The URL of your worker endpoint
   endpoint: "http://localhost:8080"
 });
+
+export { type API };
 ```
 
-### Call the API
+#### Call the API
 
 ```typescript app somewhere
 import { api } from "./api";
+
 const onClick = async () => {
   const result = await api.hello.world({
     name: "John"

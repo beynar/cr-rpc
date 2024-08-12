@@ -5,7 +5,8 @@ import { Type as ASchema } from 'arktype';
 import { Handler } from './procedure';
 import { ConnectOptions, WebSocketClient } from './websocket';
 import { createDurableServer } from './durable';
-
+import { StaticHandler, QueueHandler } from '.';
+import type { Queue } from '@cloudflare/workers-types';
 export interface Register {}
 
 export type Env = Register extends {
@@ -56,6 +57,15 @@ export type Participant = Register extends {
 			id: string;
 		};
 
+export type Queues = Register extends {
+	Queues: infer _Queues;
+}
+	? _Queues extends Record<PickKeyType<Env, Queue>, Router>
+		? _Queues
+		: never
+	: never;
+
+export type ProcedureTarget = DurableServer | Queue | undefined;
 export type DurableServer = ReturnType<typeof createDurableServer>['prototype'];
 
 export type Schema = ZSchema | VSchema | ASchema;
@@ -76,18 +86,17 @@ export type SchemaOutput<S extends Schema> = S extends ASchema
 
 export type MaybePromise<T> = T | Promise<T>;
 
-export type Middleware<
-	D extends DurableServer | undefined = undefined,
-	T extends DurableProcedureType = undefined,
-	R = any,
-> = D extends undefined ? (event: DynamicRequestEvent<D, T>) => MaybePromise<R> : (event: DynamicRequestEvent<D, T>) => MaybePromise<R>;
+export type Middleware<D extends ProcedureTarget = undefined, T extends DurableProcedureType = undefined, R = any> = D extends undefined
+	? (event: DynamicRequestEvent<D, T>) => MaybePromise<R>
+	: (event: DynamicRequestEvent<D, T>) => MaybePromise<R>;
 
 export type DurableRequestEvent = {
 	path: string[];
 	cookies: Cookies;
+	static: StaticHandler;
 	request: Request;
 	url: URL;
-	object: ObjectInfo | undefined;
+	object: ObjectInfo;
 };
 
 export type DurableWebsocketInputEvent = { session: Session; ws: WebSocket; object: ObjectInfo };
@@ -100,11 +109,23 @@ export type DurableWebsocketOutputEvent = {
 export type RequestEvent = {
 	path: string[];
 	cookies: Cookies;
+	static: StaticHandler;
 	request: Request;
 	url: URL;
 	waitUntil: ExecutionContext['waitUntil'];
 	passThroughOnException: ExecutionContext['passThroughOnException'];
+	queue: QueueHandler['send'];
 } & Env &
+	(Locals extends never ? {} : { locals: Locals });
+
+export type QueueRequestEvent = {
+	path: string[];
+	static: StaticHandler;
+	batch: MessageBatch;
+	message: Message<unknown>;
+} & Env &
+	ExecutionContext &
+	Locals &
 	(Locals extends never ? {} : { locals: Locals });
 
 export type Session = {
@@ -153,11 +174,12 @@ export type DurableOptions = {
 	}) => MaybePromise<{ session: SessionData; participant: Participant }>;
 	onError?: (payload: { error: unknown; ws?: WebSocket; session?: Session; message?: string; object: DurableServer }) => MaybePromise<void>;
 	onMessage?: (payload: { ws: WebSocket; session: Session; message: string; object: DurableServer }) => MaybePromise<void>;
+	locals?: Locals | ((env: Env, ctx: DurableObjectState) => MaybePromise<Locals>);
 };
 export type HandleFunction<
 	S extends Schema | undefined,
 	M extends Middleware<D, T>[] | undefined,
-	D extends DurableServer | undefined = undefined,
+	D extends ProcedureTarget = undefined,
 	T extends DurableProcedureType = undefined,
 > = (payload: HandlePayload<S, M, D, T>) => MaybePromise<any>;
 
@@ -168,32 +190,35 @@ type OmitNever<T> = Pick<
 	}[keyof T]
 >;
 
-export type DynamicRequestEvent<
-	D extends DurableServer | undefined = undefined,
-	T extends DurableProcedureType = undefined,
-> = D extends undefined
+export type DynamicRequestEvent<D extends ProcedureTarget = undefined, T extends DurableProcedureType = undefined> = D extends undefined
 	? RequestEvent
-	: T extends undefined | 'router'
-		? DurableRequestEvent
-		: T extends 'in'
-			? DurableWebsocketInputEvent
-			: DurableWebsocketOutputEvent;
+	: D extends Queue
+		? QueueRequestEvent
+		: T extends undefined | 'router'
+			? DurableRequestEvent
+			: T extends 'in'
+				? DurableWebsocketInputEvent
+				: DurableWebsocketOutputEvent;
 
 export type HandlePayload<
 	S extends Schema | undefined,
 	M extends Middleware<D, T>[] | undefined,
-	D extends DurableServer | undefined = undefined,
+	D extends ProcedureTarget = undefined,
 	T extends DurableProcedureType = undefined,
 > = OmitNever<{
 	event: DynamicRequestEvent<D, T>;
 	input: S extends Schema ? SchemaInput<S> : never;
 }> & {
 	ctx: ReturnOfMiddlewares<M, D, T>;
-} & (D extends undefined ? {} : { object: D });
+} & (D extends DurableServer
+		? {
+				object: D;
+			}
+		: {});
 
 export type ReturnOfMiddlewares<
 	Use extends Middleware<D, T>[] | undefined,
-	D extends DurableServer | undefined = undefined,
+	D extends ProcedureTarget = undefined,
 	T extends DurableProcedureType = undefined,
 	PreviousData = unknown,
 > = Use extends Middleware<D, T>[]
@@ -325,3 +350,23 @@ export type ObjectInfo = {
 	jurisdiction?: DurableObjectJurisdiction;
 	locationHint?: DurableObjectLocationHint;
 };
+
+export type PickKeyType<Source extends unknown, TargetType> = {
+	[K in keyof Source]: Source[K] extends TargetType ? K : never;
+}[keyof Source];
+
+export type QueuesRouter = {
+	[K in PickKeyType<Env, Queue>]: Router;
+};
+// export type QueueConsumers = Record<PickKeyType<Env, Queue>, QueueRouter>;
+
+// type QueueApi<R extends QueueRouter> = {
+// 	[K in keyof R]: R[K] extends Schema
+// 		? (payload: SchemaInput<R[K]>) => SchemaOutput<R[K]>
+// 		: R[K] extends QueueRouter
+// 			? QueueApi<R[K]>
+// 			: never;
+// };
+// export type QueuesApi = {
+// 	[K in keyof QueueConsumers]: QueueApi<QueueConsumers[K]>;
+// };

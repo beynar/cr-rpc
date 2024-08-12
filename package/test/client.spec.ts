@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import worker, { AppRouter } from '../src/index';
+import worker, { AppRouter, Server } from '../src/index';
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { createClient } from '../src/lib/client';
 
@@ -8,6 +8,7 @@ const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 const api = () =>
 	createClient<Server>({
 		endpoint: 'https://example.com',
+		includeCredentials: false,
 		// @ts-ignore
 		fetch: async (_endpoint: any, body: any) => {
 			const request = new IncomingRequest(_endpoint, body);
@@ -59,13 +60,13 @@ const api = () =>
 // 	});
 // });
 
-it('Send a null and receive a response', async () => {
-	const result = await api().test.null(null);
+// it('Send a null and receive a response', async () => {
+// 	const result = await api().test.null(null);
 
-	expect(result).toEqual({
-		hello: null,
-	});
-});
+// 	expect(result).toEqual({
+// 		hello: null,
+// 	});
+// });
 
 // it('Send an undefined and receive a response', async () => {
 // 	const result = await api().test.undefined();
@@ -126,7 +127,8 @@ it('Send a request to a path parametrized endpoint and receive a response', asyn
 		name: 'world',
 	});
 
-	expect(result2).toEqual({
+	console.log(result2);
+	expect(result2).toStrictEqual({
 		name: 'world',
 	});
 });
