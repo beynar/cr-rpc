@@ -78,6 +78,9 @@ importers:
 
   example-worker:
     dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.2.0
+        version: 0.2.0
       arktype:
         specifier: 2.0.0-beta.2
         version: 2.0.0-beta.2
@@ -143,6 +146,9 @@ importers:
       tsup:
         specifier: ^8.2.4
         version: 8.2.4(typescript@5.5.4)
+      type-fest:
+        specifier: ^4.24.0
+        version: 4.24.0
       typescript:
         specifier: ^5.5.4
         version: 5.5.4
@@ -269,6 +275,10 @@ packages:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
     dev: true
+
+  /@electric-sql/pglite@0.2.0:
+    resolution: {integrity: sha512-9ckSTnr9ChwY03lojiHM3HIOKFen72koxo44hb94Qz/L9fNejg1riwbfl2ROghA/z4ntCuyT+Zwl5pkbrSX3Aw==}
+    dev: false
 
   /@esbuild-plugins/node-globals-polyfill@0.2.3(esbuild@0.17.19):
     resolution: {integrity: sha512-r3MIryXDeXDOZh7ih1l/yE9ZLORCd5e8vWg02azWRGj5SPTuoh69A2AIyn0Z31V/kHBfZ4HgWJ+OK3GTTwLmnw==}
@@ -4083,6 +4093,11 @@ packages:
   /type-detect@4.1.0:
     resolution: {integrity: sha512-Acylog8/luQ8L7il+geoSxhEkazvkslg7PSNKOX59mbB9cOveP5aq9h74Y7YU8yDpJwetzQQrfIwtf4Wp4LKcw==}
     engines: {node: '>=4'}
+    dev: true
+
+  /type-fest@4.24.0:
+    resolution: {integrity: sha512-spAaHzc6qre0TlZQQ2aA/nGMe+2Z/wyGk5Z+Ru2VUfdNwT6kWO6TjevOlpebsATEG1EIQ2sOiDszud3lO5mt/Q==}
+    engines: {node: '>=16'}
     dev: true
 
   /typescript-eslint@8.0.1(eslint@9.8.0)(typescript@5.5.4):

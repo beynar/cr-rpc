@@ -1,6 +1,6 @@
 {
 	"name": "flarepc",
-	"version": "0.0.31",
+	"version": "0.0.33",
 	"private": false,
 	"scripts": {
 		"deploy": "wrangler deploy",
@@ -46,6 +46,7 @@
 		"arktype": "2.0.0-beta.2",
 		"estrella": "^1.4.1",
 		"tsup": "^8.2.4",
+		"type-fest": "^4.24.0",
 		"typescript": "^5.5.4",
 		"valibot": "^0.37.0",
 		"vitest": "1.5.0",

@@ -1,9 +1,9 @@
 import type { Queue } from '@cloudflare/workers-types';
 import type { InferInput as VInput, InferOutput as VOutput, BaseSchema as VSchema } from 'valibot';
 import type { Schema as ZSchema, infer as ZOutput, input as ZInput } from 'zod';
-// import type { Type as ASchema } from 'arktype';
+import type { Type as ASchema } from 'arktype';
 
-import { Handler, Cookies, StaticHandler, QueueHandler, createDurableServer, ConnectOptions, WebSocketClient } from '.';
+import { Handler, Cookies, StaticHandler, QueueHandler, createDurableServer, ConnectOptions, WebSocketClient, WSAPI } from '.';
 
 export interface Register {}
 
@@ -19,27 +19,17 @@ export type Locals = Register extends {
 	? _Locals
 	: {};
 
+export type Tags = Register extends {
+	Tags: infer _Tags;
+}
+	? _Tags
+	: string;
+
 export type SessionData = Register extends {
 	SessionData: infer _SessionData;
 }
 	? _SessionData
 	: {};
-
-export type RegisteredRouter = Register extends {
-	Router: infer _Router;
-}
-	? _Router extends Router
-		? _Router
-		: never
-	: never;
-
-export type RegisteredObjects = Register extends {
-	object: infer _Objects;
-}
-	? _Objects extends Record<string, DurableServer>
-		? _Objects
-		: never
-	: never;
 
 export type Participant = Register extends {
 	Participant: infer _Participant;
@@ -66,19 +56,31 @@ export type Queues = Register extends {
 export type ProcedureTarget = DurableServer | Queue | undefined;
 export type DurableServer = ReturnType<typeof createDurableServer>['prototype'];
 
-export type Schema = ZSchema | VSchema<any, any, any>;
-export type SchemaInput<S extends Schema> = S extends ZSchema
-	? ZInput<S>
-	: S extends VSchema<infer I, infer O, infer V>
-		? VInput<S>
-		: never;
-export type SchemaOutput<S extends Schema> = S extends ZSchema
-	? ZOutput<S>
-	: S extends VSchema<infer I, infer O, infer V>
-		? VOutput<S>
-		: never;
+export type Schema = ZSchema | VSchema<any, any, any> | ASchema;
+export type SchemaInput<S extends Schema> = S extends ASchema
+	? S['inferIn']
+	: S extends ZSchema
+		? ZInput<S>
+		: S extends VSchema<infer I, infer O, infer E>
+			? VInput<S>
+			: never;
+export type SchemaOutput<S extends Schema> = S extends ASchema
+	? S['infer']
+	: S extends ZSchema
+		? ZOutput<S>
+		: S extends VSchema<infer I, infer O, infer E>
+			? VOutput<S>
+			: never;
 
 export type MaybePromise<T> = T | Promise<T>;
+
+export type SendOptions = {
+	to?: 'ALL' | Tags | string[] | ((opts: { ws: WebSocket; session: Session }) => boolean | null | undefined);
+	omit?: Tags | string[];
+};
+type Sender<R extends Router> = (opts: SendOptions) => WSAPI<R>;
+
+type ObjectWithSender<D extends DurableServer> = D['topicsOut'] extends Router ? Omit<D, 'send'> & { send: Sender<D['topicsOut']> } : D;
 
 export type Middleware<D extends ProcedureTarget = undefined, T extends DurableProcedureType = undefined, R = any> = D extends undefined
 	? (event: DynamicRequestEvent<D, T>) => MaybePromise<R>
@@ -92,14 +94,19 @@ export type DurableRequestEvent = {
 	url: URL;
 	object: ObjectInfo;
 };
-
 export type DurableWebsocketInputEvent = { session: Session; ws: WebSocket; object: ObjectInfo };
 
 export type DurableWebsocketOutputEvent = {
-	sessions: { session: Session; ws: WebSocket }[];
+	to: { session: Session; ws: WebSocket }[];
 	object: ObjectInfo;
 };
 
+type RateLimitKeyExtractor<T extends RequestEvent | DurableWebsocketInputEvent | DurableRequestEvent> = (event: T) => string;
+export type ProcedureRateLimiters = Record<PickKeyType<Env, RateLimit>, RateLimitKeyExtractor<RequestEvent | DurableRequestEvent>>;
+export type WebsocketRateLimiters = Record<
+	PickKeyType<Env, RateLimit>,
+	RateLimitKeyExtractor<DurableWebsocketInputEvent & { type: string; data: unknown }>
+>;
 export type RequestEvent = {
 	path: string[];
 	cookies: Cookies;
@@ -165,10 +172,12 @@ export type DurableOptions = {
 	getSessionDataAndParticipant?: (payload: {
 		event: DurableRequestEvent;
 		object: DurableServer;
-	}) => MaybePromise<{ session: SessionData; participant: Participant }>;
+	}) => MaybePromise<{ session: SessionData; participant: Participant; tags?: Tags[] }>;
 	onError?: (payload: { error: unknown; ws?: WebSocket; session?: Session; message?: string; object: DurableServer }) => MaybePromise<void>;
 	onMessage?: (payload: { ws: WebSocket; session: Session; message: string; object: DurableServer }) => MaybePromise<void>;
 	locals?: Locals | ((env: Env, ctx: DurableObjectState) => MaybePromise<Locals>);
+	broadcastPresenceTo?: 'NONE' | 'ALL' | Tags;
+	rateLimiters?: WebsocketRateLimiters;
 };
 export type HandleFunction<
 	S extends Schema | undefined,
@@ -205,9 +214,9 @@ export type HandlePayload<
 }> & {
 	ctx: ReturnOfMiddlewares<M, D, T>;
 } & (D extends DurableServer
-		? {
-				object: D;
-			}
+		? OmitNever<{
+				object: T extends 'out' ? Omit<D, 'send'> : ObjectWithSender<D>;
+			}>
 		: {});
 
 export type ReturnOfMiddlewares<

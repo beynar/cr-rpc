@@ -21,27 +21,31 @@ import {
 	ObjectInfo,
 	withCookies,
 	Locals,
+	SendOptions,
+	Tags,
 } from '.';
+import { rateLimit } from './ratelimit';
 
-type SendOptions = {
-	to?: 'ALL' | (string & {}) | (string[] & {});
-	omit?: string | string[];
-};
-
-export const createDurableServer = <_IN extends Router, _OUT extends Router>(opts: DurableOptions) => {
-	return class DurableServer<R extends Router = Router, IN extends _IN = _IN, OUT extends _OUT = _OUT> extends DurableObject<any> {
+export const createDurableServer = (opts: DurableOptions) => {
+	const defaultBroadcastPresenceTag =
+		opts.broadcastPresenceTo && opts.broadcastPresenceTo !== 'ALL' && opts.broadcastPresenceTo !== 'NONE'
+			? opts.broadcastPresenceTo
+			: opts.broadcastPresenceTo || 'ALL';
+	return class DurableServer<
+		R extends Router = Router,
+		IN extends Router = Router,
+		OUT extends Router = Router,
+	> extends DurableObject<any> {
 		public ctx: DurableObjectState;
 		public env: Env;
 		// @ts-expect-error this will be set in the constructor by blockConcurrency if needed
 		locals: Locals;
 		// @ts-ignore
-		id: string;
 		state: DurableObjectState;
 		storage: DurableObjectStorage;
-
 		router?: R;
-		topicsIn?: _IN;
-		topicsOut?: _OUT;
+		topicsIn?: IN;
+		topicsOut?: OUT;
 
 		constructor(ctx: DurableObjectState, env: Env) {
 			super(ctx, env);
@@ -57,7 +61,6 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 			this.storage = ctx.storage;
 			this.env = env;
 			this.ctx = ctx;
-			this.env = env;
 			this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
 		}
 
@@ -71,28 +74,32 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 				if (!this.topicsOut) {
 					throw error('SERVICE_UNAVAILABLE');
 				}
-				const sessions = this.getSessions().filter(({ ws, session }) => {
-					if (session.connected !== true) {
-						return false;
-					}
-					if (omit && omit.length > 0) {
-						return !omit.includes(session.participant.id);
-					}
-					if (to === 'ALL' || !to) {
-						return true;
-					} else {
-						return [to].flat().includes(session.participant.id);
-					}
-				});
+
+				const sessions = this.getSessions(typeof to === 'string' && to !== 'ALL' ? to : undefined)
+					.filter((s) => s.session.connected)
+					.filter(
+						typeof to === 'function'
+							? to
+							: ({ session }) => {
+									if (omit && omit.length > 0) {
+										return !omit.includes(session.participant.id);
+									}
+									if (to === 'ALL' || !to) {
+										return true;
+									} else if (Array.isArray(to)) {
+										return to.includes(session.participant.id);
+									}
+									return true;
+								},
+					);
 
 				if (sessions.length) {
-					const [{ session }] = sessions;
 					const handler = getHandler(this.topicsOut, type.split('.')) as Handler<any, any, any, any>;
 					const parsedData = await parse(handler?.schema, data);
 					const ctx = await handler?.call(
 						{
-							object: session.object,
-							sessions,
+							object: sessions[0].session.object,
+							to: sessions,
 						} as any,
 						parsedData,
 						this,
@@ -102,7 +109,7 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 						ws.send(socketify({ type, data: parsedData, ctx }));
 					});
 				}
-			}) as WSAPI<_OUT>;
+			}) as WSAPI<OUT>;
 
 		async handleRpc(request: Request, object: ObjectInfo) {
 			const requestEvent = createDurableRequestEvent(request, this.env, this.ctx, object);
@@ -110,13 +117,11 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 				if (!this.router) {
 					throw error('SERVICE_UNAVAILABLE');
 				}
-				this.id = request.headers.get('x-flarepc-object-id') as string;
 				const handler = getHandler(this.router, requestEvent.path);
 				if (!handler) {
 					error('NOT_FOUND');
 				} else {
-					const response = await handleRequest(requestEvent as any, handler, this);
-					return withCookies(response, requestEvent);
+					return withCookies(await handleRequest(requestEvent as any, handler, this), requestEvent);
 				}
 			} catch (error) {
 				return handleError(error);
@@ -132,12 +137,16 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 				ws = server;
 				const event = createDurableRequestEvent(request, this.env, this.ctx, object);
 
-				let { session: sessionData = {}, participant = { id: crypto.randomUUID() } } =
-					(await opts?.getSessionDataAndParticipant?.({ event, object: this })) || {};
+				let {
+					session: sessionData = {},
+					participant = { id: crypto.randomUUID() },
+					tags = [],
+				} = (await opts?.getSessionDataAndParticipant?.({ event, object: this })) || {};
 
 				if (!participant.id) {
 					participant.id = crypto.randomUUID();
 				}
+
 				session = {
 					id: crypto.randomUUID(),
 					participant,
@@ -146,14 +155,19 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 					data: sessionData,
 					object,
 				};
+
 				serializeAttachment(server, session);
-				this.state.acceptWebSocket(server);
+
+				this.state.acceptWebSocket(server, tags);
 				this.sendPresence();
 
-				return new Response(null, {
-					status: 101,
-					webSocket: client,
-				});
+				return withCookies(
+					new Response(null, {
+						status: 101,
+						webSocket: client,
+					}),
+					event,
+				);
 			} catch (error) {
 				opts?.onError?.({ error, ws, session, object: this });
 				return handleError(error);
@@ -162,24 +176,25 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 
 		async webSocketMessage(ws: WebSocket, message: string): Promise<void> {
 			const { type, data } = socketiparse(message as string);
+
 			const session = deserializeAttachment(ws);
 			if (!this.topicsIn) {
 				throw error('SERVICE_UNAVAILABLE');
 			}
+			const event = {
+				session,
+				ws,
+				object: session.object,
+			} as any;
 			try {
-				await opts?.onMessage?.({ ws, session, message, object: this });
+				opts.rateLimiters && opts.rateLimiters && (await rateLimit(this.env, opts.rateLimiters, Object.assign({}, event, { type, data })));
+				opts?.onMessage && (await opts?.onMessage?.({ ws, session, message, object: this }));
 				const handler = getHandler(this.topicsIn, String(type).split('.')) as Handler<any, any, any, any>;
+				if (!handler) {
+					throw error('NOT_FOUND');
+				}
 				const parsedData = await parse(handler?.schema, data);
-
-				await handler?.call(
-					{
-						session,
-						ws,
-						object: session.object,
-					} as any,
-					parsedData,
-					this,
-				);
+				await handler?.call(event, parsedData, this);
 			} catch (error) {
 				opts?.onError?.({ error, ws, session, message, object: this });
 				const { body, status, statusText } = getErrorAsJson(error);
@@ -192,16 +207,20 @@ export const createDurableServer = <_IN extends Router, _OUT extends Router>(opt
 			});
 		}
 
-		getSessions = () => {
-			return this.ctx.getWebSockets().map((ws) => ({
+		getSessions = (tag?: Tags) => {
+			return this.ctx.getWebSockets(tag).map((ws) => ({
 				session: deserializeAttachment(ws),
 				ws,
 			}));
 		};
 
-		sendPresence = () => {
+		sendPresence = (tag: Tags | undefined = defaultBroadcastPresenceTag) => {
 			const webSockets: WebSocket[] = [];
-			const participants = this.getSessions()
+			if (opts.broadcastPresenceTo === 'NONE' && !tag) {
+				// If some tag is passed this options will overtake the default options we will broadcast presence
+				return;
+			}
+			const participants = this.getSessions(tag === 'ALL' ? undefined : tag)
 				.filter(({ ws, session }) => {
 					if (session.connected !== true) {
 						return false;

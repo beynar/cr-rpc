@@ -1,7 +1,8 @@
 import { procedure, createServer, durableProcedure, createDurableServer, cors, InferApiTypes, stream, queueProcedure } from 'flarepc';
 import { string, object, optional, array } from 'valibot';
 import { DurableObject } from 'cloudflare:workers';
-import { type } from 'arktype';
+import { PGliteWorker } from '@electric-sql/pglite/dist/worker';
+
 import { z } from 'zod';
 
 import Groq from 'groq-sdk';
@@ -10,7 +11,9 @@ declare module 'flarepc' {
 	interface Register {
 		Env: {
 			Queue: Queue;
+			MY_RATE_LIMITER: RateLimit;
 		};
+		Tags: 'ADMIN' | 'MENTOR' | 'USER';
 		Router: AppRouter;
 		Locals: {
 			groq: Groq;
@@ -25,22 +28,10 @@ declare module 'flarepc' {
 	}
 }
 
-const arkSchema = type({
-	name: 'string',
-	platform: "'android' | 'ios'",
-	'versions?': '(number | string)[]',
-});
-
 const zodSchema = z.object({
 	name: z.string(),
 	platform: z.enum(['android', 'ios']),
 	versions: z.array(z.string()),
-});
-
-const valibotSchema = object({
-	name: string(),
-	platform: optional(string(), 'android'),
-	versions: optional(array(string()), ['1', '2', '3']),
 });
 
 interface Env {
@@ -50,10 +41,8 @@ interface Env {
 
 const router = {
 	text: procedure()
-		.input(z.string())
+		.input(string())
 		.handle(async ({ event, input }) => {
-			const t = event.queue('Queue').test.send(input);
-			event.queue('Queue').test.sendBatch([input]);
 			return {
 				hello: input,
 			};
@@ -98,7 +87,7 @@ const topicsOut = {
 			//
 		})
 			.input(object({ message: optional(string(), 'hello') }))
-			.handle(({ input, object, event }) => {
+			.handle(({ input, event }) => {
 				return {
 					hello: input.message,
 				};
@@ -126,10 +115,10 @@ const durableRouter = {
 				};
 			}),
 		valibot: routerProcedure()
-			.input(valibotSchema)
+			.input(string())
 			.handle(({ input, object, event }) => {
 				return {
-					hello: input.name,
+					hello: input,
 				};
 			}),
 	},
@@ -165,6 +154,7 @@ const durableRouter = {
 			test: routerProcedure()
 				.input(object({ name: string() }))
 				.handle(async ({ input, object, event }) => {
+					// return await db.query("select 'Hello world' as message;");
 					return {
 						hello: input.name,
 					};
@@ -202,6 +192,11 @@ const server = createServer({
 	},
 	queues: {
 		Queue,
+	},
+	rateLimiters: {
+		MY_RATE_LIMITER: (event) => {
+			return event.request.headers.get('cf-connecting-ip') || '';
+		},
 	},
 });
 

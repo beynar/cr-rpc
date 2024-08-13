@@ -23,7 +23,9 @@ import {
 	Queues,
 	StaticServerOptions,
 	createStaticServer,
+	ProcedureRateLimiters,
 } from '.';
+import { rateLimit } from './ratelimit';
 export const getHandler = (router: Router, path: string[]) => {
 	type H = Router | Handler<any, any, any> | undefined;
 	let handler: H = router;
@@ -100,6 +102,7 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 	getObjectJurisdictionOrLocationHint,
 	queues,
 	static: staticOptions,
+	rateLimiters,
 }: {
 	router: R;
 	locals?: Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>);
@@ -111,6 +114,7 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 	objects?: O;
 	queues?: Queues;
 	static?: StaticServerOptions;
+	rateLimiters?: ProcedureRateLimiters;
 }) => ({
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		// Cors are enabled by default with very permissive options to smoothen the usage and allows cookies to be used.
@@ -126,6 +130,8 @@ export const createServer = <R extends Router, O extends DurableObjects>({
 				response = (await handler(requestEvent)) ?? response;
 				if (response) break $;
 			}
+
+			!isWebSocketConnect && rateLimiters && (await rateLimit(env, rateLimiters, requestEvent));
 
 			if (stub && object?.name && object?.id) {
 				if (isWebSocketConnect) {
