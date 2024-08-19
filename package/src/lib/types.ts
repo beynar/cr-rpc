@@ -303,7 +303,7 @@ export type InferOutPutAtPath<R extends Router, P extends RouterPaths<R>> =
 export type GetObjectJurisdictionOrLocationHint = (event: RequestEvent) => MaybePromise<{
 	jurisdiction?: DurableObjectJurisdiction;
 	locationHint?: DurableObjectLocationHint;
-}>;
+} | void>;
 
 export type Meta = {
 	name: string | null;

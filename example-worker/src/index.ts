@@ -123,15 +123,22 @@ const server = createServer({
 			groq: {} as Groq,
 		};
 	},
-
+	after: [(event) => {}],
+	getObjectJurisdictionOrLocationHint: (event) => {
+		if (event.request.cf?.isEUCountry) {
+			return {
+				jurisdiction: 'eu',
+			};
+		}
+	},
+	rateLimiters: {
+		MY_RATE_LIMITER: (event) => {
+			return event.request.headers.get('cf-connecting-ip') || '';
+		},
+	},
 	queues: {
 		Queue,
 	},
-	// rateLimiters: {
-	// 	MY_RATE_LIMITER: (event) => {
-	// 		return event.request.headers.get('cf-connecting-ip') || '';
-	// 	},
-	// },
 });
 
 const publicRouter = {
@@ -170,6 +177,9 @@ const servers = createServers({
 		},
 		objects: {
 			TestDurable: TestDurable,
+		},
+		queues: {
+			Queue,
 		},
 	},
 	admin: {

@@ -47,7 +47,12 @@ export class QueueHandler {
 			if (isBatch) {
 				let messages: string[] = [];
 				for (const item of data) {
-					messages.push(socketify(parse(handler.schema, item)));
+					messages.push(
+						socketify({
+							type: path.join('.'),
+							payload: parse(handler?.schema, data),
+						}),
+					);
 				}
 				const sendBatches = async () => {
 					return Promise.all(
@@ -64,8 +69,11 @@ export class QueueHandler {
 				};
 				return this.ctx.waitUntil(sendBatches());
 			} else {
-				const parsedData = socketify(parse(handler?.schema, data));
-				return this.ctx.waitUntil(queue.send(parsedData, { contentType: 'text', delaySeconds: opts as number }));
+				const parsedData = socketify({
+					type: path.join('.'),
+					payload: parse(handler?.schema, data),
+				});
+				return this.ctx.waitUntil(queue.send(parsedData, { contentType: 'text', delaySeconds: 1 }));
 			}
 		}) as QueueApi<Queues[Q]>;
 	};

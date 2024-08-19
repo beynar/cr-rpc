@@ -104,7 +104,6 @@ export const createClient = <
 		}
 
 		url.pathname = path.join('/');
-		console.log({ server }, object, path, url.pathname);
 		if (object.websocket) {
 			return createWebSocketConnection(payload, url);
 		}

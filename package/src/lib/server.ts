@@ -61,8 +61,7 @@ const getMetaFromRequest = async ({
 	const [name, id] = url.match(/\/\(([^:]+):([^)]+)\)/)?.slice(1) || [null, null];
 	event.meta.name = name;
 	event.meta.id = id;
-	const { jurisdiction = null, locationHint = null } =
-		name && id && getObjectJurisdictionOrLocationHint ? await getObjectJurisdictionOrLocationHint(event) : {};
+	const { jurisdiction = null, locationHint = null } = (name && id && (await getObjectJurisdictionOrLocationHint?.(event))) || {};
 	event.meta.jurisdiction = jurisdiction;
 	event.meta.locationHint = locationHint;
 };
@@ -116,7 +115,7 @@ const executeFetch = async (
 		after = [],
 		locals = {},
 		cors,
-		onError: c,
+		onError,
 		objects,
 		getObjectJurisdictionOrLocationHint,
 		queues,
@@ -174,7 +173,7 @@ const executeFetch = async (
 			response = await handleRequest(event, router);
 		}
 	} catch (error) {
-		c?.(error);
+		onError?.({ error, event });
 		response = handleError(error);
 	}
 
@@ -185,28 +184,36 @@ const executeFetch = async (
 	return withCookies(response!, event);
 };
 
-const executeQueues = (queues: Queues, locals?: LocalsOptions) => ({
-	async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
-		return Promise.all(
-			batch.messages.map(async (message) => {
-				if (typeof message.body === 'string') {
-					const { type, payload } = socketiparse(message.body);
-					const path = type.split('.');
-					const handler = getHandler(queues!, path) as Handler<any, any, any, any>;
-					const event = {
-						batch,
-						ctx,
-						env,
-						locals: typeof locals === 'function' ? await locals(new Request('$__QUEUE_REQUEST___$'), env, ctx) : {},
-						message,
-						path,
-					} satisfies QueueRequestEvent;
-					return await handler.call(event, socketiparse(parse(handler?.schema, payload)));
+const executeQueues = (queues: Queues, locals?: LocalsOptions) => (batch: MessageBatch, env: Env, ctx: ExecutionContext) => {
+	return Promise.all(
+		batch.messages.map(async (message) => {
+			if (typeof message.body === 'string') {
+				const { type, payload } = socketiparse(message.body);
+				const path = type.split('.');
+
+				const handler = getHandler(queues[batch.queue], path) as Handler<any, any, any, any>;
+				const event = {
+					batch,
+					ctx,
+					env,
+					locals: typeof locals === 'function' ? await locals(new Request('$__QUEUE_REQUEST___$'), env, ctx) : {},
+					message,
+					path,
+				} satisfies QueueRequestEvent;
+				try {
+					await handler.call(event, parse(handler?.schema, payload));
+					message.ack();
+				} catch (error) {
+					if (message.attempts < 10) {
+						message.retry();
+					} else {
+						console.error(error, event);
+					}
 				}
-			}),
-		);
-	},
-});
+			}
+		}),
+	);
+};
 
 type LocalsOptions = Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>);
 type ServerOptions<R extends Router = Router, O extends DurableObjects = DurableObjects> = {
@@ -214,7 +221,7 @@ type ServerOptions<R extends Router = Router, O extends DurableObjects = Durable
 	locals?: LocalsOptions;
 	before?: ((event: RequestEvent) => MaybePromise<Response | void>)[];
 	after?: ((response: Response, event: RequestEvent) => MaybePromise<Response | void>)[];
-	onError?: (error: unknown) => Response | void;
+	onError?: (errorPayload: { error: unknown; event: RequestEvent }) => Response | void;
 	queues?: Queues;
 	cors?: CorsPair | false;
 	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
@@ -233,7 +240,7 @@ export const createServer = <R extends Router, O extends DurableObjects>(otps: S
 		router: R;
 		objects: O extends DurableObjects ? { [K in keyof O]: InferDurableApi<O[K]['prototype']> } : undefined;
 	},
-	queues: otps.queues ? executeQueues(otps.queues, otps.locals) : undefined,
+	queue: otps.queues ? executeQueues(otps.queues, otps.locals) : undefined,
 });
 
 export const createServers = <CS extends CombinedServerOptions>(opts: CS) => {
@@ -241,14 +248,14 @@ export const createServers = <CS extends CombinedServerOptions>(opts: CS) => {
 	return {
 		async fetch(request: Request, env: Env, ctx: ExecutionContext) {
 			const server = servers.find((server) => request.url.includes(`[${server}]`));
-			console.log({ server });
+
 			if (!server || !(server in opts)) {
 				return handleError(new FLARERROR('NOT_FOUND', 'server not found'));
 			}
 			const serverOptions = opts[server];
 			return executeFetch(request, env, ctx, Object.assign({}, serverOptions, { basePath: server }));
 		},
-		queues: opts.queues ? executeQueues(combineQueues(opts), opts.locals) : undefined,
+		queue: executeQueues(combineQueues(opts), opts.locals),
 		infer: {} as {
 			[K in keyof CS]: {
 				router: CS[K]['router'];
@@ -284,6 +291,5 @@ export const combineQueues = (opts: CombinedServerOptions) => {
 			}
 		}
 	}
-
 	return QUEUES;
 };

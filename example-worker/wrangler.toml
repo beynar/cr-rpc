@@ -12,6 +12,17 @@ services = [
   { binding = "<BINDING_NAME>", service = "<WORKER_NAME>" }
 ]
 
+[[queues.producers]]
+  queue = "Queue"
+  binding = "Queue"
+
+
+[[queues.consumers]]
+  queue = "Queue"
+  max_batch_size = 10
+  max_batch_timeout = 30
+  max_retries = 10
+  dead_letter_queue = "Queue-dlq"
 
 [[unsafe.bindings]]
 name = "MY_RATE_LIMITER"
