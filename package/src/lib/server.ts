@@ -29,6 +29,7 @@ import {
 	Cookies,
 	parse,
 	CronRequestEvent,
+	CorsOptions,
 } from '.';
 
 export const getHandler = (router: Router, path: string[]) => {
@@ -58,6 +59,11 @@ const getMetaFromRequest = async ({
 	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
 }): Promise<void> => {
 	[event.meta.name, event.meta.id] = event.request.url.match(/\/\(([^:]+):([^)]+)\)/)?.slice(1) || [null, null];
+
+	if (event.meta.id === 'random') {
+		event.meta.id = crypto.randomUUID();
+	}
+
 	if (event.meta.name && event.meta.id && getObjectJurisdictionOrLocationHint) {
 		const localization = await getObjectJurisdictionOrLocationHint(event);
 		Object.assign(event.meta, {
@@ -126,9 +132,6 @@ const executeFetch = async (
 	server: string | null = null,
 ): Promise<Response> => {
 	// Cors are enabled by default with very permissive options to smoothen the usage and allows cookies to be used.
-	if (!cors && cors !== false) {
-		cors = corsHandler();
-	}
 
 	const event = {
 		ctx,
@@ -153,9 +156,18 @@ const executeFetch = async (
 	const stub = await getDurableServer({ event, objects });
 	const isWebSocketConnect = request.headers.get('Upgrade') === 'websocket';
 
+	const corsOptions = typeof cors === 'function' ? await cors(event) : cors;
+	const { preflight, corsify } =
+		corsOptions === false
+			? {
+					preflight: null,
+					corsify: null,
+				}
+			: corsHandler(corsOptions);
+
 	let response: Response | undefined;
 	$: try {
-		for (let handler of before.concat((cors as CorsPair)?.preflight || [], createStaticServer(staticOptions)) || []) {
+		for (let handler of before.concat(preflight || [], createStaticServer(staticOptions)) || []) {
 			response = (await handler(event)) ?? response;
 			if (response) break $;
 		}
@@ -179,7 +191,7 @@ const executeFetch = async (
 		response = handleError(error);
 	}
 
-	for (let handler of after.concat((cors as CorsPair)?.corsify || []) || []) {
+	for (let handler of after.concat(corsify || []) || []) {
 		response = (await handler(response!, event)) ?? response;
 	}
 
@@ -226,7 +238,7 @@ type ServerOptions<R extends Router = Router, O extends DurableObjects = Durable
 	after?: ((response: Response, event: RequestEvent) => MaybePromise<Response | void>)[];
 	onError?: (errorPayload: { error: unknown; event: RequestEvent }) => Response | void;
 	queues?: Queues;
-	cors?: CorsPair | false;
+	cors?: false | CorsOptions | ((event: RequestEvent) => MaybePromise<CorsOptions>);
 	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
 	objects?: O;
 	static?: StaticServerOptions;

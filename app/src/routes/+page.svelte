@@ -39,7 +39,7 @@
 	<button
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
-			const result = await publicApi.TestDurable().test({ id: 'string' });
+			const result = await publicApi.TestDurable('random').test({ id: 'string' });
 			console.log({ result });
 		}}
 	>

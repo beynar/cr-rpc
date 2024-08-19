@@ -242,7 +242,7 @@ export type InferDurableApi<D extends DurableServer> = DurableServerDefinition<D
 
 export type Client<S extends Server> = API<S['router']> & {
 	[K in keyof S['objects']]: (
-		id?: string,
+		id?: 'random' | (string & {}),
 	) => S['objects'][K] extends DurableServerDefinition<infer R, infer I, infer O>
 		? API<R> & { connect: (options: ConnectOptions<O>) => Promise<WebSocketClient<I, O>> }
 		: never;
