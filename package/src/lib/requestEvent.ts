@@ -37,6 +37,12 @@ export type RequestEvent = {
 	url: URL;
 	cookies: Cookies;
 };
+export type CronRequestEvent = ScheduledController & {
+	env: Env;
+	ctx: ExecutionContext;
+	locals?: Locals;
+	queue: QueueHandler['send'];
+};
 
 export type DurableRequestEvent = {
 	request: Request;

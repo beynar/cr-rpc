@@ -181,6 +181,17 @@ const servers = createServers({
 		queues: {
 			Queue,
 		},
+		crons: {
+			'0*****': (event) => {
+				console.log(event);
+			},
+		},
+		locals: () => {
+			return {
+				prod: true,
+				groq: {} as Groq,
+			};
+		},
 	},
 	admin: {
 		router: adminRouter,
