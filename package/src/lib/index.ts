@@ -1,7 +1,7 @@
 export * from './server';
 export * from './procedure';
 export * from './types';
-export * from './deform';
+export * from './transform';
 export * from './websocket';
 export * from './durable';
 export * from './error';
@@ -13,3 +13,5 @@ export * from './wsProxy';
 export * from './static';
 export * from './queue';
 export * from './utils';
+export * from './requestEvent';
+export * from './ratelimit';

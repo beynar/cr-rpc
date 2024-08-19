@@ -22,7 +22,7 @@ export const createRecursiveProxy = (
 };
 
 export type WSAPI<R extends Router> = {
-	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer D, infer T>
+	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer T>
 		? S extends Schema
 			? (payload: SchemaInput<S>) => void
 			: () => void

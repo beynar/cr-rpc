@@ -1,5 +1,6 @@
-import { procedure, createServer, queueProcedure } from './lib';
+import { procedure, createServer, createDurableServer, combineRouters, createServers, Server as SS } from './lib';
 import { string, object, map, BaseSchema, boolean, instance, number, undefined_, null_, date, set } from 'valibot';
+import { createClient } from './lib/client';
 
 const locals = {
 	prod: true,
@@ -69,11 +70,17 @@ const router = {
 					hello: input.name,
 				};
 			}),
-		map: procedure(() => {
-			return {
-				ok: true,
-			};
-		})
+		map: procedure()
+			.use(() => {
+				return {
+					ok: true,
+				};
+			})
+			.use(() => {
+				return {
+					ok2: true,
+				};
+			})
 			.input(map(string(), string()))
 			.handle(async ({ input, event, ctx }) => {
 				return {
@@ -165,20 +172,121 @@ const router = {
 export type AppRouter = typeof router;
 
 const Queue = {
-	test: queueProcedure()
+	test: procedure('queue')
 		.input(string())
 		.handle(async ({ input, event }) => {
-			console.log(input);
+			// console.log(input);
 		}),
 };
+
+const durableRouter = {
+	test: procedure('durable')
+		.input(object({ id: string() }))
+		.handle(async ({ input, event }) => {
+			const promise = async () => {
+				await new Promise((resolve) => {
+					setTimeout(resolve, 2000);
+				});
+				console.log({ input });
+				return {
+					ok: true,
+				};
+			};
+
+			return {
+				ok: true,
+			};
+		}),
+};
+
+export class TestDurable extends createDurableServer() {
+	out = {
+		message: procedure('out')
+			.input(object({ message: string() }))
+			.handle(async ({ input, event }) => {
+				return {
+					hello: input.message,
+				};
+			}),
+	};
+	in = {
+		message: procedure('in')
+			.input(object({ message: string() }))
+			.handle(async ({ input, event }) => {
+				return {
+					hello: input.message,
+				};
+			}),
+	};
+	testRouter = {
+		test2: procedure('durable').handle(async ({ event }) => {
+			return {
+				ok: false,
+			};
+		}),
+	};
+	send = this.createSender(this.out);
+
+	router = combineRouters(durableRouter, this.testRouter);
+}
 
 const server = createServer({
 	router,
 	locals,
+	objects: {
+		TestDurable: TestDurable,
+	},
 	// queues: {
 	// 	Queue,
 	// },
 });
 
 export type Server = typeof server.infer;
-export default server;
+// export default server;
+
+const publicRouter = {
+	public: procedure().handle(async ({ event }) => {
+		return {
+			hello: 'world',
+		};
+	}),
+};
+const adminRouter = {
+	admin: procedure().handle(async ({ event }) => {
+		return {
+			hello: 'world',
+		};
+	}),
+};
+
+const servers = createServers({
+	public: {
+		router: publicRouter,
+		objects: {
+			TestDurable: TestDurable,
+		},
+	},
+	admin: {
+		router: adminRouter,
+	},
+});
+
+export type Servers = typeof servers.infer;
+export type PublicServer = typeof servers.infer.public;
+export type AdminServer = typeof servers.infer.admin;
+
+const api = createClient<Servers, 'public'>({
+	endpoint: 'http://localhost:8080',
+	server: 'public',
+	onError: (error) => {
+		console.log(error);
+	},
+});
+const api2 = createClient<Server>({
+	endpoint: 'http://localhost:8080',
+	onError: (error) => {
+		console.log(error);
+	},
+});
+
+type T = Servers extends Record<string, SS> ? true : false;

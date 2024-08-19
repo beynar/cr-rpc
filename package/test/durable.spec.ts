@@ -19,17 +19,11 @@ const api = () =>
 	});
 
 it('Send an object and receive a response', async () => {
-	const result = await api().TestDurable('objectId').test.test.test({
-		name: 'world',
+	const result = await api().TestDurable('objectId').test({
+		id: 'objectId2',
 	});
-	// const result_ws = await api().TestDurable('objectId').connect({
-	// 	messages: {},
-	// });
-	// const result2 = await api().test.boolean({
-	// 	boolean: true,
-	// });
-
+	console.log({ result });
 	expect(result).toEqual({
-		hello: 'world',
+		ok: true,
 	});
 });

@@ -107,10 +107,6 @@ export class Cookies {
 	};
 }
 
-export const createCookies = (request: Request): Cookies => {
-	return new Cookies(request);
-};
-
 export const withCookies = (reponse: Response, { cookies }: { cookies: Cookies }) => {
 	if (reponse.status !== 200) {
 		return reponse;

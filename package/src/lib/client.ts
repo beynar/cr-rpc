@@ -1,26 +1,28 @@
-import { type Client, type MaybePromise, type Server } from './types';
+import { type Client, type MaybePromise, type Server, Meta } from './types';
 import { createWebSocketConnection } from './websocket';
 import { tryParse } from './utils';
-import { deform, form } from './deform';
+import { formiparse, formify } from './transform';
 
-export type DObject<O = string> = {
-	name?: O;
-	id?: string;
+export type ClientMeta = {
+	name: string | null;
+	id: string | null;
+	server: string | null;
 	call: boolean;
 	websocket: boolean;
-	jurisdiction?: DurableObjectJurisdiction;
-	locationHint?: DurableObjectLocationHint;
 };
 
-const defaultObject = () => ({
-	name: undefined,
-	id: undefined,
-	call: false,
-	websocket: false,
-});
+const defaultObject = () =>
+	({
+		name: null,
+		id: null,
+		server: null,
+		call: false,
+		websocket: false,
+	}) satisfies ClientMeta;
+
 export const createRecursiveProxy = (
-	callback: (opts: { path: string[]; payload: any; object: DObject; callbackFunction: any }) => unknown,
-	object: DObject = defaultObject(),
+	callback: (opts: { path: string[]; payload: any; object: ClientMeta; callbackFunction: any }) => unknown,
+	object: ClientMeta = defaultObject(),
 	path: string[] = [],
 	payload: unknown[] = [],
 	callbackFunction: any = null,
@@ -31,15 +33,19 @@ export const createRecursiveProxy = (
 				object = defaultObject();
 			}
 			if (typeof key !== 'string') return undefined;
+
 			if (key === 'then') {
 				// mean that it's the last path and the api is effectively called
 				if (!object.call) {
-					object.name = undefined;
-					object.id = undefined;
+					object.name = null;
+					object.id = null;
 				} else if (path[path.length - 1] === 'connect' && path.length === 2 && path[0] === object.name) {
 					// If connect is called on the object, it means that we're are trying to connect to a websocket
 					object.websocket = true;
 					object.call = false;
+				}
+				if (object.call || object.websocket) {
+					path[0] = `(${object.name}:${object.id})`;
 				}
 				return (resolve: (value: any) => void, reject: (reason?: any) => void) => {
 					return resolve(
@@ -58,7 +64,7 @@ export const createRecursiveProxy = (
 		apply(_1, _2, args) {
 			if (!object.id) {
 				object.name = path[path.length - 1];
-				object.id = args[0];
+				object.id = args[0] || 'DEFAULT';
 			} else {
 				object.call = true;
 			}
@@ -68,27 +74,39 @@ export const createRecursiveProxy = (
 	return proxy;
 };
 
-export const createClient = <S extends Server>(
-	{
-		endpoint = '/api',
-		headers,
-		fetch: f = fetch,
-		onError = () => {},
-		includeCredentials = true,
-	}: {
-		endpoint?: string;
-		headers?: HeadersInit | (<I = unknown>({ path, input }: { path: string; input: I }) => MaybePromise<HeadersInit>);
-		fetch?: typeof fetch;
-		onError?: (error: unknown, response: Response) => void;
-		includeCredentials?: boolean;
-	} = {
-		endpoint: '/api',
-		onError: () => {},
-	},
-) => {
+// Should end with the server name if not undefined
+type Endpoint<Server extends string | undefined> = `${string}${Server extends string ? `/${Server}` : ''}`;
+export type ClientOptions = {
+	endpoint: string;
+
+	headers?: HeadersInit | (<I = unknown>({ path, input }: { path: string; input: I }) => MaybePromise<HeadersInit>);
+	fetch?: typeof fetch;
+	onError?: (error: unknown, response: Response) => void;
+	includeCredentials?: boolean;
+};
+
+export const createClient = <
+	S extends Server | Record<string, Server>,
+	N extends S extends Record<string, Server> ? keyof S : never = never,
+>({
+	endpoint,
+	headers,
+	fetch: f = fetch,
+	onError = () => {},
+	// @ts-ignore
+	server,
+	includeCredentials = true,
+}: ClientOptions & (S extends Record<string, Server> ? { server: N } : {})) => {
 	return createRecursiveProxy(async ({ path, payload, object, callbackFunction }) => {
+		const url = new URL(endpoint);
+		if (server) {
+			path.unshift(`[${server}]`);
+		}
+
+		url.pathname = path.join('/');
+		console.log({ server }, object, path, url.pathname);
 		if (object.websocket) {
-			return createWebSocketConnection(payload, `${endpoint}/${path.join('/')}`, object);
+			return createWebSocketConnection(payload, url);
 		}
 		let method = 'POST';
 		const maybeVerb = path[path.length - 1];
@@ -97,10 +115,12 @@ export const createClient = <S extends Server>(
 			path.pop();
 			method = maybeVerb.toUpperCase();
 		}
-
-		return f(`${endpoint}/${path.join('/')}${method === 'GET' ? '' : ''}`, {
+		if (method === 'GET') {
+			url.search = new URLSearchParams(JSON.stringify(payload)).toString();
+		}
+		return f(url, {
 			method,
-			body: method === 'GET' ? undefined : form(payload),
+			body: method === 'GET' ? undefined : formify(payload),
 			// @ts-ignore
 			...(includeCredentials
 				? {
@@ -118,13 +138,6 @@ export const createClient = <S extends Server>(
 							input: payload,
 						})
 					: headers,
-				object.call || object.websocket
-					? {
-							'x-flarepc-object-name': object.name,
-							'x-flarepc-object-id': object.id,
-							'x-flarepc-websocket': object.websocket,
-						}
-					: {},
 			),
 		}).then(async (res) => {
 			if (res.status !== 200) {
@@ -171,9 +184,9 @@ export const createClient = <S extends Server>(
 					}
 				} else if (res.headers.get('content-type')?.includes('multipart/form-data')) {
 					const formData = await res.formData();
-					return deform(formData as FormData);
+					return formiparse(formData as FormData);
 				}
 			}
 		});
-	}) as Client<S>;
+	}) as Client<S extends Record<string, Server> ? S[N] : S>;
 };

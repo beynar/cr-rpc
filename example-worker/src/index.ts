@@ -1,20 +1,22 @@
-import { procedure, createServer, durableProcedure, createDurableServer, cors, InferApiTypes, stream, queueProcedure } from 'flarepc';
-import { string, object, optional, array } from 'valibot';
+import { procedure, createServer, createDurableServer, cors, InferApiTypes, stream, createServers } from 'flarepc';
+import { string, optional, object } from 'valibot';
 import { DurableObject } from 'cloudflare:workers';
-import { PGliteWorker } from '@electric-sql/pglite/dist/worker';
 
 import { z } from 'zod';
 
 import Groq from 'groq-sdk';
-
+declare global {
+	type Env = {
+		TestDurable: DurableObject;
+		GROQ_API_KEY: string;
+		Queue: Queue;
+		MY_RATE_LIMITER: RateLimit;
+	};
+}
 declare module 'flarepc' {
 	interface Register {
-		Env: {
-			Queue: Queue;
-			MY_RATE_LIMITER: RateLimit;
-		};
+		Env: Env;
 		Tags: 'ADMIN' | 'MENTOR' | 'USER';
-		Router: AppRouter;
 		Locals: {
 			groq: Groq;
 		};
@@ -34,11 +36,6 @@ const zodSchema = z.object({
 	versions: z.array(z.string()),
 });
 
-interface Env {
-	TestDurable: DurableObject;
-	GROQ_API_KEY: string;
-}
-
 const router = {
 	text: procedure()
 		.input(string())
@@ -49,134 +46,70 @@ const router = {
 		}),
 };
 
-const routerProcedure = durableProcedure<TestDurable>();
-const inProcedure = durableProcedure<TestDurable, 'in'>();
-const outProcedure = durableProcedure<TestDurable, 'out'>();
-
-const topicsIn = {
-	message: inProcedure((event) => {
-		//
-	})
-		.input(object({ message: string() }))
-		.handle(({ input, object, event }) => {
-			console.log(input);
-		}),
-	paul: {
-		louis: inProcedure()
+export class TestDurable extends createDurableServer({}) {
+	out = {
+		message: procedure('out')
 			.input(object({ message: optional(string(), 'hello') }))
-			.handle(({ input, object, event }) => {
-				event.session.participant;
+			.handle(({ input }) => {
 				return {
 					hello: input.message,
 				};
 			}),
-	},
-};
-const topicsOut = {
-	message: outProcedure((event) => {
-		//
-	})
-		.input(object({ message: optional(string(), 'hello') }))
-		.handle(({ input, object }) => {
-			return {
-				hello: input.message,
-			};
-		}),
-	arn: {
-		aud: outProcedure(() => {
-			//
-		})
-			.input(object({ message: optional(string(), 'hello') }))
-			.handle(({ input, event }) => {
-				return {
-					hello: input.message,
-				};
-			}),
-	},
-};
-
-const durableRouter = {
-	validators: {
-		// ark: routerProcedure((event) => {
-		// 	//
-		// })
-		// 	.input(arkSchema)
-		// 	.handle(({ input, object, event }) => {
-		// 		console.log(object.ctx.storage);
-		// 		return {
-		// 			hello: input.name,
-		// 		};
-		// 	}),
-		zod: routerProcedure()
-			.input(zodSchema)
-			.handle(({ input, object, event }) => {
-				return {
-					hello: input.name,
-				};
-			}),
-		valibot: routerProcedure()
-			.input(string())
-			.handle(({ input, object, event }) => {
-				return {
-					hello: input,
-				};
-			}),
-	},
-	ai: routerProcedure()
-		.input(z.string())
-		.handle(async ({ input, event }) => {
-			const groq = new Groq({
-				apiKey: '',
-			});
-			const completion = await groq.chat.completions.create({
-				model: 'llama3-70b-8192',
-				max_tokens: 4,
-				messages: [
-					{ role: 'system', content: 'You are a helpful assistant.' },
-					{ role: 'user', content: input },
-				],
-				stream: true,
-			});
-			return await stream<Groq.Chat.ChatCompletionChunk>(completion.toReadableStream(), {
-				onChunk: ({ chunk, first }) => {
-					console.log('AI chunk received', chunk.choices[0].delta.content, first);
-				},
-				onEnd: (chunks) => {
-					console.log('AI stream ended', chunks);
-				},
-				onStart: () => {
-					console.log('AI stream started');
-				},
-			});
-		}),
-	test: {
-		test: {
-			test: routerProcedure()
-				.input(object({ name: string() }))
-				.handle(async ({ input, object, event }) => {
-					// return await db.query("select 'Hello world' as message;");
+		arn: {
+			aud: procedure('out')
+				.input(object({ message: optional(string(), 'hello') }))
+				.handle(({ input, event }) => {
 					return {
-						hello: input.name,
+						hello: input.message,
 					};
 				}),
 		},
-	},
-};
-export class TestDurable extends createDurableServer({}) {
-	topicsOut = topicsOut;
-	topicsIn = topicsIn;
-	router = durableRouter;
+	};
+	in = {
+		message: procedure('in')
+			.input(object({ message: string() }))
+			.handle(({ input, event }) => {
+				console.log(input);
+			}),
+		paul: {
+			louis: procedure('in')
+				.input(object({ message: optional(string(), 'hello') }))
+				.handle(({ input, event }) => {
+					return {
+						hello: input.message,
+					};
+				}),
+		},
+	};
+	router = {
+		test: procedure('durable')
+			.input(object({ id: string() }))
+			.handle(async ({ input, event }) => {
+				// object.setPresence({
+				// 	participant: {
+				// 		id: input.id,
+				// 		name: 'nono',
+				// 	},
+				// });
+
+				return {
+					ok: true,
+				};
+			}),
+	};
+
+	constructor(ctx: DurableObjectState, env: Env) {
+		super(ctx, env);
+	}
 }
 
 const Queue = {
-	test: queueProcedure()
+	test: procedure('queue')
 		.input(string())
 		.handle(async ({ input, event }) => {
 			console.log(event.batch);
 		}),
 };
-
-export type AppRouter = typeof router;
 
 const server = createServer({
 	cors: cors(),
@@ -190,16 +123,66 @@ const server = createServer({
 			groq: {} as Groq,
 		};
 	},
+
 	queues: {
 		Queue,
 	},
-	rateLimiters: {
-		MY_RATE_LIMITER: (event) => {
-			return event.request.headers.get('cf-connecting-ip') || '';
+	// rateLimiters: {
+	// 	MY_RATE_LIMITER: (event) => {
+	// 		return event.request.headers.get('cf-connecting-ip') || '';
+	// 	},
+	// },
+});
+
+const publicRouter = {
+	public: procedure().handle(async ({ event }) => {
+		event.queue('Queue').test.send('string');
+		return {
+			hello: 'world',
+		};
+	}),
+	'(public)': procedure().handle(async ({ event }) => {
+		return {
+			hello: 'world',
+		};
+	}),
+};
+
+const adminRouter = {
+	admin: procedure().handle(async ({ event }) => {
+		return {
+			hello: 'world',
+		};
+	}),
+};
+
+const servers = createServers({
+	public: {
+		router: publicRouter,
+		getObjectJurisdictionOrLocationHint: (event) => {
+			if (event.request.cf?.isEUCountry) {
+				return {
+					jurisdiction: 'eu',
+				};
+			} else {
+				return {};
+			}
 		},
+		objects: {
+			TestDurable: TestDurable,
+		},
+	},
+	admin: {
+		router: adminRouter,
 	},
 });
 
+export type Servers = typeof servers.infer;
 export type Server = typeof server.infer;
 export type API = InferApiTypes<Server>;
-export default server;
+export type PublicServer = typeof servers.infer.public;
+export type AdminServer = typeof servers.infer.admin;
+export type PublicAPI = InferApiTypes<PublicServer>;
+export type AdminAPI = InferApiTypes<AdminServer>;
+// export default servers;
+export default servers;

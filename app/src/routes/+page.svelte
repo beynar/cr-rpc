@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type API } from '../api';
+	import { api, publicApi, type API } from '../api';
 
 	let ws = $state<API['TestDurable']['ws']>();
 
 	onMount(async () => {
-		const wes = await api.TestDurable('test').connect({
+		const wes = await publicApi.TestDurable('test').connect({
 			dedupeConnection: true,
 			onError(error) {
 				console.log(error);
@@ -16,9 +16,6 @@
 			handlers: {
 				message: ({ data, ctx }) => {
 					console.log(data);
-				},
-				paul: {
-					louis: ({ data, ctx }) => {}
 				}
 			}
 		});
@@ -26,9 +23,28 @@
 	});
 </script>
 
-<img src="http://localhost:8080/static/test.png" alt="test" />
+<img src="http://localhost:8080/[public]/static/test.png" alt="test" />
 
 <div class="grid bg-slate-200 h-screen grid-cols-2 gap-4 p-10">
+	<button
+		class="shadow-md rounded-lg h-fit bg-white p-4"
+		onclick={async () => {
+			// const result = await api.text('ezaez');
+			const result2 = await publicApi.public();
+			console.log(result2);
+		}}
+	>
+		Test procedure
+	</button>
+	<button
+		class="shadow-md rounded-lg h-fit bg-white p-4"
+		onclick={async () => {
+			const result = await publicApi.TestDurable().test({ id: 'string' });
+			console.log({ result });
+		}}
+	>
+		Test durable
+	</button>
 	<button
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
@@ -93,7 +109,7 @@
 			const activityGraph = document.querySelector('#activity-graph');
 			const html = activityGraph?.outerHTML;
 			const result = await api.TestDurable('test').test.test.test({
-				name: 'html as string'
+				id: ws?.presence[0].id!
 			});
 			console.log(result);
 		}}

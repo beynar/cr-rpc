@@ -23,7 +23,7 @@ export const socketiparse = (value: string) => {
 	});
 };
 
-export const form = (value: unknown, formData: FormData = new FormData()) => {
+export const formify = (value: unknown, formData: FormData = new FormData()) => {
 	const stringified = stringify(value, {
 		File: (value: any) => {
 			if (value instanceof File) {
@@ -53,7 +53,7 @@ export const form = (value: unknown, formData: FormData = new FormData()) => {
 	return formData;
 };
 
-export const deform = (formData: FormData) => {
+export const formiparse = (formData: FormData) => {
 	const stringified = formData.get('value') as string;
 	const value = parse(stringified, {
 		File: (value: any) => {

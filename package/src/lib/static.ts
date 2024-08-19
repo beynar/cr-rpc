@@ -102,9 +102,9 @@ export class StaticHandler {
 		return this.manifest as Record<string, string>;
 	};
 
-	serve = async (request: Request): Promise<Response | void> => {
+	serve = async (request: Request, key: string): Promise<Response | void> => {
 		const url = new URL(request.url);
-		const key = url.pathname.replace('static/', '').replace(/^\/+/, '');
+		console.log({ key });
 		const manifest = await this.getManifest();
 
 		let mimeType = lookup(key) || 'application/octet-stream';
@@ -263,8 +263,8 @@ export class StaticHandler {
 export const createStaticServer =
 	(options?: StaticServerOptions) =>
 	(event: RequestEvent): Promise<Response | void> | void => {
-		if (event.url.pathname.startsWith('/static/')) {
-			const handler = new StaticHandler(event, event, options);
-			return handler.serve(event.request);
+		if (event.path[0] === 'static') {
+			const handler = new StaticHandler(event.env, event.ctx, options);
+			return handler.serve(event.request, event.path.at(-1)!);
 		}
 	};

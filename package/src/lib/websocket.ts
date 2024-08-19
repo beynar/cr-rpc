@@ -1,5 +1,5 @@
-import type { DObject } from './client';
-import { socketify, socketiparse } from './deform';
+import type { ClientMeta } from './client';
+import { socketify, socketiparse } from './transform';
 import { WSAPI, createRecursiveProxy } from './wsProxy';
 import type { MessageHandlers, MessagePayload, Participant, Router, RouterPaths } from './types';
 
@@ -203,20 +203,11 @@ export class WebSocketClient<I extends Router, O extends Router> {
 	}
 }
 
-export const createWebSocketConnection = async <I extends Router, O extends Router>(
-	opts: ConnectOptions<O>,
-	url: string,
-	object: DObject,
-) => {
-	const endpoint = new URL(url);
-	const searchParams = new URLSearchParams({
-		id: object.id!,
-		object: object.name!,
-		...(opts.searchParams || {}),
-	});
+export const createWebSocketConnection = async <I extends Router, O extends Router>(opts: ConnectOptions<O>, url: URL) => {
+	const searchParams = new URLSearchParams(opts.searchParams);
 
-	endpoint.search = searchParams.toString();
-	const stringifyEndpoint = endpoint.toString();
+	url.search = searchParams.toString();
+	const stringifyEndpoint = url.toString();
 
 	if (!(globalThis as any).__flarews) {
 		(globalThis as any).__flarews = new Map();

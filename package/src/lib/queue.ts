@@ -28,8 +28,8 @@ const createBatches = (data: string[]) => {
 export class QueueHandler {
 	private env: Env;
 	private queues?: Queues;
-	private ctx: ExecutionContext;
-	constructor(env: Env, ctx: ExecutionContext, queues?: Queues) {
+	private ctx: { waitUntil: ExecutionContext['waitUntil'] };
+	constructor(env: Env, ctx: { waitUntil: ExecutionContext['waitUntil'] }, queues?: Queues) {
 		this.env = env;
 		this.queues = queues;
 		this.ctx = ctx;
@@ -47,7 +47,7 @@ export class QueueHandler {
 			if (isBatch) {
 				let messages: string[] = [];
 				for (const item of data) {
-					messages.push(socketify(parse(handler?.schema, item)));
+					messages.push(socketify(parse(handler.schema, item)));
 				}
 				const sendBatches = async () => {
 					return Promise.all(

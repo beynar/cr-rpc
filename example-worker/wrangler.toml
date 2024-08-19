@@ -8,6 +8,9 @@ bucket = "./public"
 
 [vars]
 GROQ_API_KEY = ""
+services = [
+  { binding = "<BINDING_NAME>", service = "<WORKER_NAME>" }
+]
 
 
 [[unsafe.bindings]]
