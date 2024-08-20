@@ -23,7 +23,7 @@ export const cors = (options: CorsOptions = {}) => {
 	let { origin = '*', credentials = true, allowMethods = '*', allowHeaders, exposeHeaders, maxAge = 3600 } = options;
 
 	if (allowHeaders && (allowHeaders[0] || allowHeaders) !== '*') {
-		allowHeaders.concat(['x-flarepc-client', 'x-flarepc-server', 'x-flarepc-object-name', 'x-flarepc-object-id', 'x-flarepc-websocket']);
+		allowHeaders.concat(['x-flarepc-client']);
 	}
 
 	const getAccessControlOrigin = (request?: Request): string => {

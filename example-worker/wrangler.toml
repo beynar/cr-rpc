@@ -12,17 +12,17 @@ services = [
   { binding = "<BINDING_NAME>", service = "<WORKER_NAME>" }
 ]
 
-[[queues.producers]]
-  queue = "Queue"
-  binding = "Queue"
+# [[queues.producers]]
+#   queue = "Queue"
+#   binding = "Queue"
 
 
-[[queues.consumers]]
-  queue = "Queue"
-  max_batch_size = 10
-  max_batch_timeout = 30
-  max_retries = 10
-  dead_letter_queue = "Queue-dlq"
+# [[queues.consumers]]
+#   queue = "Queue"
+#   max_batch_size = 10
+#   max_batch_timeout = 30
+#   max_retries = 10
+#   dead_letter_queue = "Queue-dlq"
 
 [[unsafe.bindings]]
 name = "MY_RATE_LIMITER"
@@ -36,8 +36,8 @@ namespace_id = "1001"
 # Period: the duration of the period, in seconds. Must be either 10 or 60
 simple = { limit = 4, period = 10 }
 
-[triggers]
-crons = [ "0*****" ]
+# [triggers]
+# crons = [ "0*****" ]
 
 # Automatically place your workloads in an optimal location to minimize latency.
 # If you are running back-end logic in a Worker, running it closer to your back-end infrastructure

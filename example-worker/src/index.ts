@@ -112,7 +112,6 @@ const Queue = {
 };
 
 const server = createServer({
-	cors: cors(),
 	objects: {
 		TestDurable: TestDurable,
 	},
@@ -142,12 +141,13 @@ const server = createServer({
 });
 
 const publicRouter = {
-	public: procedure().handle(async ({ event }) => {
-		event.queue('Queue').test.send('string');
-		return {
-			hello: 'world',
-		};
-	}),
+	public: procedure()
+		.input(string())
+		.handle(async ({ event }) => {
+			return {
+				hello: 'world',
+			};
+		}),
 	'(public)': procedure().handle(async ({ event }) => {
 		return {
 			hello: 'world',
@@ -156,11 +156,13 @@ const publicRouter = {
 };
 
 const adminRouter = {
-	admin: procedure().handle(async ({ event }) => {
-		return {
-			hello: 'world',
-		};
-	}),
+	admin: procedure()
+		.input(string())
+		.handle(async ({ event }) => {
+			return {
+				hello: 'world',
+			};
+		}),
 };
 
 const servers = createServers({

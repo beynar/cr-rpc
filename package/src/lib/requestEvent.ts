@@ -1,4 +1,77 @@
-import { Env, Locals, MaybePromise, Meta, Queues, Session, DurableMeta, QueueHandler, StaticHandler, Cookies } from '.';
+import {
+	Env,
+	Locals,
+	Meta,
+	Session,
+	QueueHandler,
+	StaticHandler,
+	Cookies,
+	DurableServer,
+	ServerOptions,
+	GetObjectJurisdictionOrLocationHint,
+} from '.';
+
+const getMetaFromRequest = async ({
+	event,
+	getObjectJurisdictionOrLocationHint,
+}: {
+	event: RequestEvent;
+	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
+}): Promise<void> => {
+	[event.meta.name, event.meta.id] = event.request.url.match(/\/\(([^:]+):([^)]+)\)/)?.slice(1) || [null, null];
+
+	if (event.meta.id === 'random') {
+		event.meta.id = crypto.randomUUID();
+	}
+
+	if (event.meta.name && event.meta.id && getObjectJurisdictionOrLocationHint) {
+		const localization = await getObjectJurisdictionOrLocationHint(event);
+		Object.assign(event.meta, {
+			jurisdiction: localization?.jurisdiction || null,
+			locationHint: localization?.locationHint || null,
+		});
+	}
+};
+
+export const getJurisdictionalNamespace = (
+	namespace: DurableObjectNamespace<DurableServer>,
+	jurisdiction: DurableObjectJurisdiction | null,
+): DurableObjectNamespace<DurableServer> => {
+	if (!jurisdiction) {
+		return namespace;
+	}
+	try {
+		return namespace.jurisdiction(jurisdiction);
+	} catch (error) {
+		// We must be in a dev env and the jurisdictional setting is not available
+		return namespace;
+	}
+};
+
+export const buildEvent = async (
+	request: Request,
+	env: Env,
+	ctx: ExecutionContext,
+	opts: ServerOptions,
+	server: string | null = null,
+): Promise<RequestEvent> => {
+	const event = {
+		ctx,
+		env,
+		path: [],
+		locals: typeof opts.locals === 'function' ? await opts.locals(request, env, ctx) : opts.locals,
+		queue: new QueueHandler(env, ctx, opts.queues).send,
+		request,
+		static: new StaticHandler(env, ctx),
+		meta: { name: null, id: null, jurisdiction: null, locationHint: null, server },
+		url: new URL(request.url),
+		cookies: new Cookies(request),
+	} satisfies RequestEvent;
+
+	getPath(event);
+	await getMetaFromRequest({ event, getObjectJurisdictionOrLocationHint: opts.getObjectJurisdictionOrLocationHint });
+	return event;
+};
 
 export const getPath = (event: RequestEvent | DurableRequestEvent) => {
 	let isObject = false;

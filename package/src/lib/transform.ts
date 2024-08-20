@@ -1,5 +1,5 @@
-import { stringify, parse } from 'devalue';
-import { Session } from '.';
+import { stringify as dStringify, parse as dParse } from 'devalue';
+
 const url = {
 	stringify: (value: any) => {
 		if (value instanceof URL) {
@@ -11,20 +11,20 @@ const url = {
 	},
 };
 
-export const socketify = (value: unknown) => {
-	return stringify(value, {
+export const stringify = (value: unknown) => {
+	return dStringify(value, {
 		URL: url.stringify,
 	});
 };
 
-export const socketiparse = (value: string) => {
-	return parse(value, {
+export const parse = (value: string) => {
+	return dParse(value, {
 		URL: url.parse,
 	});
 };
 
-export const formify = (value: unknown, formData: FormData = new FormData()) => {
-	const stringified = stringify(value, {
+export const form = (value: unknown, formData: FormData = new FormData()) => {
+	const stringified = dStringify(value, {
 		File: (value: any) => {
 			if (value instanceof File) {
 				formData.append(value.name, value);
@@ -53,9 +53,9 @@ export const formify = (value: unknown, formData: FormData = new FormData()) => 
 	return formData;
 };
 
-export const formiparse = (formData: FormData) => {
+export const deform = (formData: FormData) => {
 	const stringified = formData.get('value') as string;
-	const value = parse(stringified, {
+	const value = dParse(stringified, {
 		File: (value: any) => {
 			return formData.get(value) as File;
 		},
@@ -70,12 +70,4 @@ export const formiparse = (formData: FormData) => {
 		URL: url.parse,
 	});
 	return value;
-};
-
-export const serializeAttachment = (ws: WebSocket, value: Session) => {
-	ws.serializeAttachment(socketify(value));
-};
-
-export const deserializeAttachment = (ws: WebSocket): Session => {
-	return socketiparse(ws.deserializeAttachment()) as Session;
 };

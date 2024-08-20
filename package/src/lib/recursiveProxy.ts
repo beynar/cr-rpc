@@ -1,6 +1,3 @@
-import { Handler } from './procedure';
-import { Router, Schema, SchemaInput } from './types';
-
 export const createRecursiveProxy = (
 	callback: (opts: { type: string; data: unknown[]; opts?: unknown }) => unknown,
 	path: string[] = [],
@@ -19,14 +16,4 @@ export const createRecursiveProxy = (
 		},
 	});
 	return proxy;
-};
-
-export type WSAPI<R extends Router> = {
-	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer T>
-		? S extends Schema
-			? (payload: SchemaInput<S>) => void
-			: () => void
-		: R[K] extends Router
-			? WSAPI<R[K]>
-			: R[K];
 };

@@ -30,7 +30,7 @@
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
 			// const result = await api.text('ezaez');
-			const result2 = await publicApi.public();
+			const result2 = await publicApi.public('');
 			console.log(result2);
 		}}
 	>
@@ -39,7 +39,7 @@
 	<button
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
-			const result = await publicApi.TestDurable('random').test({ id: 'string' });
+			const result = await publicApi.TestDurable('random').test({ id: false });
 			console.log({ result });
 		}}
 	>
@@ -48,15 +48,11 @@
 	<button
 		class="shadow-md rounded-lg h-fit bg-white p-4"
 		onclick={async () => {
-			const result = await api.TestDurable('test').validators.ark({
-				name: 'world',
-				platform: 'android',
-				versions: ['1', '2', '3']
-			});
+			const result = await api.TestDurable('test').test({ id: 'string' });
 			console.log(result);
 		}}
 	>
-		Error on ark
+		Test normal api
 	</button>
 	<button
 		class="shadow-md rounded-lg h-fit bg-white p-4"

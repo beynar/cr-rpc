@@ -88,14 +88,7 @@ export class StaticHandler {
 			if (!this.manifest) {
 				throw error(
 					'BAD_REQUEST',
-					`Static Handler not initialized. add
-
-				[site]
-				bucket = "./public"
-
-				to your wrangler.toml
-				and put some files in ./public directory
-				`,
+					`Static Handler not initialized. add\n[site]\nbucket="./public"\nto your wrangler.toml and put some files in ./public directory`,
 				);
 			}
 		}

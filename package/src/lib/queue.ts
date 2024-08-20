@@ -1,4 +1,4 @@
-import { createRecursiveProxy, getHandler, parse, error, Handler, PickKeyType, Queues, QueueApi, Env, socketify } from '.';
+import { createRecursiveProxy, validate, getHandler, error, Handler, PickKeyType, Queues, QueueApi, Env, stringify } from '.';
 
 const createBatches = (data: string[]) => {
 	const maxItemsPerBatch = 100;
@@ -48,9 +48,9 @@ export class QueueHandler {
 				let messages: string[] = [];
 				for (const item of data) {
 					messages.push(
-						socketify({
+						stringify({
 							type: path.join('.'),
-							payload: parse(handler?.schema, data),
+							payload: validate(handler?.schema, item),
 						}),
 					);
 				}
@@ -69,9 +69,9 @@ export class QueueHandler {
 				};
 				return this.ctx.waitUntil(sendBatches());
 			} else {
-				const parsedData = socketify({
+				const parsedData = stringify({
 					type: path.join('.'),
-					payload: parse(handler?.schema, data),
+					payload: validate(handler?.schema, data),
 				});
 				return this.ctx.waitUntil(queue.send(parsedData, { contentType: 'text', delaySeconds: 1 }));
 			}

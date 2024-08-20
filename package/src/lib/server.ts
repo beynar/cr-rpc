@@ -1,5 +1,4 @@
 import {
-	CorsPair,
 	Handler,
 	error,
 	handleError,
@@ -7,29 +6,25 @@ import {
 	RequestEvent,
 	Router,
 	Env,
-	Locals,
-	MaybePromise,
 	InferDurableApi,
-	GetObjectJurisdictionOrLocationHint,
 	cors as corsHandler,
 	withCookies,
-	Queues,
-	StaticServerOptions,
 	createStaticServer,
-	ProcedureRateLimiters,
 	CombinedRouters,
 	QueueHandler,
-	StaticHandler,
-	getPath,
 	rateLimit,
 	DurableServer,
-	socketiparse,
+	validate,
 	FLARERROR,
 	QueueRequestEvent,
-	Cookies,
 	parse,
 	CronRequestEvent,
-	CorsOptions,
+	buildEvent,
+	ServerOptions,
+	CronHandler,
+	getJurisdictionalNamespace,
+	DurableObjects,
+	CombinedServerOptions,
 } from '.';
 
 export const getHandler = (router: Router, path: string[]) => {
@@ -42,50 +37,6 @@ export const getHandler = (router: Router, path: string[]) => {
 		throw error('NOT_FOUND', 'handler not found');
 	}
 	return handler as Handler<any, any, any, any>;
-};
-
-type DurableObjects = Record<
-	string,
-	{
-		prototype: DurableServer;
-	}
->;
-
-const getMetaFromRequest = async ({
-	event,
-	getObjectJurisdictionOrLocationHint,
-}: {
-	event: RequestEvent;
-	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
-}): Promise<void> => {
-	[event.meta.name, event.meta.id] = event.request.url.match(/\/\(([^:]+):([^)]+)\)/)?.slice(1) || [null, null];
-
-	if (event.meta.id === 'random') {
-		event.meta.id = crypto.randomUUID();
-	}
-
-	if (event.meta.name && event.meta.id && getObjectJurisdictionOrLocationHint) {
-		const localization = await getObjectJurisdictionOrLocationHint(event);
-		Object.assign(event.meta, {
-			jurisdiction: localization?.jurisdiction || null,
-			locationHint: localization?.locationHint || null,
-		});
-	}
-};
-
-const getJurisdictionalNamespace = (
-	namespace: DurableObjectNamespace<DurableServer>,
-	jurisdiction: DurableObjectJurisdiction | null,
-): DurableObjectNamespace<DurableServer> => {
-	if (!jurisdiction) {
-		return namespace;
-	}
-	try {
-		return namespace.jurisdiction(jurisdiction);
-	} catch (error) {
-		// We must be in a dev env and the jurisdictional setting is not available
-		return namespace;
-	}
 };
 
 const getDurableServer = async <O extends DurableObjects>({
@@ -116,47 +67,15 @@ const executeFetch = async (
 	request: Request,
 	env: Env,
 	ctx: ExecutionContext,
-	{
-		router,
-		before = [],
-		after = [],
-		locals = {},
-		cors,
-		onError,
-		objects,
-		getObjectJurisdictionOrLocationHint,
-		queues,
-		static: staticOptions,
-		rateLimiters,
-	}: ServerOptions,
+	opts: ServerOptions,
 	server: string | null = null,
 ): Promise<Response> => {
-	// Cors are enabled by default with very permissive options to smoothen the usage and allows cookies to be used.
-
-	const event = {
-		ctx,
-		env,
-		path: [],
-		locals: typeof locals === 'function' ? await locals(request, env, ctx) : locals,
-		queue: new QueueHandler(env, ctx, queues).send,
-		request,
-		static: new StaticHandler(env, ctx),
-		meta: {
-			name: null,
-			id: null,
-			jurisdiction: null,
-			locationHint: null,
-			server,
-		},
-		url: new URL(request.url),
-		cookies: new Cookies(request),
-	} satisfies RequestEvent;
-	getPath(event);
-	await getMetaFromRequest({ event, getObjectJurisdictionOrLocationHint });
-	const stub = await getDurableServer({ event, objects });
+	const event = await buildEvent(request, env, ctx, opts, server);
+	const stub = await getDurableServer({ event, objects: opts.objects });
 	const isWebSocketConnect = request.headers.get('Upgrade') === 'websocket';
 
-	const corsOptions = typeof cors === 'function' ? await cors(event) : cors;
+	// Cors are enabled by default with very permissive options to smoothen the usage and allows cookies to be used.
+	const corsOptions = typeof opts.cors === 'function' ? await opts.cors(event) : opts.cors;
 	const { preflight, corsify } =
 		corsOptions === false
 			? {
@@ -167,31 +86,32 @@ const executeFetch = async (
 
 	let response: Response | undefined;
 	$: try {
-		for (let handler of before.concat(preflight || [], createStaticServer(staticOptions)) || []) {
+		for (let handler of (opts.before || []).concat(preflight || [], createStaticServer(opts.static)) || []) {
 			response = (await handler(event)) ?? response;
 			if (response) break $;
 		}
 
-		if (!isWebSocketConnect && rateLimiters) {
-			await rateLimit(env, rateLimiters, event);
+		if (!isWebSocketConnect && opts.rateLimiters) {
+			await rateLimit(env, opts.rateLimiters, event);
 		}
 
 		if (stub && event.meta?.name && event.meta?.id) {
 			await stub.setMeta(event.meta);
 			if (isWebSocketConnect) {
-				response = await stub.fetch(request);
+				return await stub.fetch(request);
 			} else {
 				response = await stub.handleRpc(request);
 			}
 		} else {
-			response = await handleRequest(event, router);
+			response = await handleRequest(event, opts.router);
 		}
 	} catch (error) {
-		onError?.({ error, event });
+		console.log(error);
+		opts.onError?.({ error, event });
 		response = handleError(error);
 	}
 
-	for (let handler of after.concat(corsify || []) || []) {
+	for (let handler of (opts.after || []).concat(corsify || []) || []) {
 		response = (await handler(response!, event)) ?? response;
 	}
 
@@ -202,7 +122,7 @@ const executeQueue = (batch: MessageBatch, env: Env, ctx: ExecutionContext, rout
 	return Promise.all(
 		batch.messages.map(async (message) => {
 			if (typeof message.body === 'string') {
-				const { type, payload } = socketiparse(message.body);
+				const { type, payload } = parse(message.body);
 				const path = type.split('.');
 
 				const handler = getHandler(router, path) as Handler<any, any, any, any>;
@@ -215,7 +135,7 @@ const executeQueue = (batch: MessageBatch, env: Env, ctx: ExecutionContext, rout
 					path,
 				} satisfies QueueRequestEvent;
 				try {
-					await handler.call(event, parse(handler?.schema, payload));
+					await handler.call(event, validate(handler?.schema, payload));
 					message.ack();
 				} catch (error) {
 					if (message.attempts < 10) {
@@ -228,25 +148,6 @@ const executeQueue = (batch: MessageBatch, env: Env, ctx: ExecutionContext, rout
 		}),
 	);
 };
-
-type CronHandler = (event: CronRequestEvent) => void;
-type LocalsOptions = Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>);
-type ServerOptions<R extends Router = Router, O extends DurableObjects = DurableObjects> = {
-	router: R;
-	locals?: LocalsOptions;
-	before?: ((event: RequestEvent) => MaybePromise<Response | void>)[];
-	after?: ((response: Response, event: RequestEvent) => MaybePromise<Response | void>)[];
-	onError?: (errorPayload: { error: unknown; event: RequestEvent }) => Response | void;
-	queues?: Queues;
-	cors?: false | CorsOptions | ((event: RequestEvent) => MaybePromise<CorsOptions>);
-	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
-	objects?: O;
-	static?: StaticServerOptions;
-	rateLimiters?: ProcedureRateLimiters;
-	crons?: Record<string, CronHandler>;
-};
-
-type CombinedServerOptions = Record<string, ServerOptions>;
 
 const executeCron = async (controller: ScheduledController, env: Env, ctx: ExecutionContext, handler: CronHandler, opts: ServerOptions) => {
 	const event = Object.assign(controller, {

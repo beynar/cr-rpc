@@ -1,7 +1,7 @@
 import { type Client, type MaybePromise, type Server, Meta } from './types';
 import { createWebSocketConnection } from './websocket';
 import { tryParse } from './utils';
-import { formiparse, formify } from './transform';
+import { deform, form } from './transform';
 
 export type ClientMeta = {
 	name: string | null;
@@ -119,7 +119,7 @@ export const createClient = <
 		}
 		return f(url, {
 			method,
-			body: method === 'GET' ? undefined : formify(payload),
+			body: method === 'GET' ? undefined : form(payload),
 			// @ts-ignore
 			...(includeCredentials
 				? {
@@ -183,7 +183,7 @@ export const createClient = <
 					}
 				} else if (res.headers.get('content-type')?.includes('multipart/form-data')) {
 					const formData = await res.formData();
-					return formiparse(formData as FormData);
+					return deform(formData as FormData);
 				}
 			}
 		});

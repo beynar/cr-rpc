@@ -6,17 +6,6 @@ export const tryParse = <C>(data: unknown) => {
 	}
 };
 
-export const tryStringify = (data: unknown) => {
-	if (typeof data === 'string') {
-		return data;
-	}
-	try {
-		return JSON.stringify(data);
-	} catch (e) {
-		return data as string;
-	}
-};
-
 export const inputToSearchParams = (input: unknown) => {
 	return `input=${encodeURIComponent(JSON.stringify(input))}`;
 };

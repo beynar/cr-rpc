@@ -1,34 +1,4 @@
-import {
-	error,
-	HandleFunction,
-	Middleware,
-	ReturnOfMiddlewares,
-	Schema,
-	SchemaInput,
-	ProcedureType,
-	DynamicRequestEvent,
-	Router,
-	HandlePayload,
-} from '.';
-
-export const parse = <S extends Schema | undefined>(schema: S, data: any) => {
-	if (schema === undefined) {
-		return undefined;
-	} else {
-		// @ts-ignore
-		const parseResult = schema.safeParse?.(data) || schema._run?.({ value: data }, { abortEarly: true, abortPipeEarly: true });
-		const errors = parseResult?.error?.issues || parseResult.issues || parseResult.summary;
-		if (errors) {
-			throw error('BAD_REQUEST', errors);
-		}
-		if ('_run' in schema) {
-			return parseResult.value;
-		} else if ('safeParse' in schema) {
-			return parseResult.data;
-		}
-		return parseResult.data || parseResult.output || parseResult;
-	}
-};
+import { HandleFunction, Middleware, ReturnOfMiddlewares, Schema, SchemaInput, ProcedureType, DynamicRequestEvent, HandlePayload } from '.';
 
 export const useMiddlewares = async <M extends Middleware<T>[], T extends ProcedureType = undefined>(
 	middlewares: M,

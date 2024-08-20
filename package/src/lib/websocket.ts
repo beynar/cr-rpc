@@ -1,7 +1,6 @@
-import type { ClientMeta } from './client';
-import { socketify, socketiparse } from './transform';
-import { WSAPI, createRecursiveProxy } from './wsProxy';
-import type { MessageHandlers, MessagePayload, Participant, Router, RouterPaths } from './types';
+import { stringify, parse } from './transform';
+import { createRecursiveProxy } from './recursiveProxy';
+import type { MessageHandlers, MessagePayload, Participant, Router, RouterPaths, WSAPI } from './types';
 
 export type WebSocketState = 'RECONNECTING' | 'CONNECTED' | 'CLOSED';
 
@@ -64,7 +63,7 @@ export class WebSocketClient<I extends Router, O extends Router> {
 	};
 
 	send = createRecursiveProxy(async ({ type, data }) => {
-		const message = socketify({ type, data });
+		const message = stringify({ type, data });
 		if (!this.ws || this.ws.readyState !== 1) {
 			this.sendQueue.push(message);
 		} else {
@@ -171,7 +170,7 @@ export class WebSocketClient<I extends Router, O extends Router> {
 		if (e.data === 'pong') {
 			if (this.pongTimer) clearTimeout(this.pongTimer);
 		} else {
-			const { type, data } = socketiparse(e.data as string) as MessagePayload<O, RouterPaths<O>>;
+			const { type, data } = parse(e.data as string) as MessagePayload<O, RouterPaths<O>>;
 			if (type === 'presence') {
 				this.presence = data as Participant[];
 				this.opts.onPresence?.(this.presence);

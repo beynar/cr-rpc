@@ -5,9 +5,6 @@ import type { Type as ASchema } from 'arktype';
 
 import {
 	Handler,
-	Cookies,
-	StaticHandler,
-	QueueHandler,
 	ConnectOptions,
 	WebSocketClient,
 	DurableServer,
@@ -16,6 +13,9 @@ import {
 	DurableRequestEvent,
 	WebsocketInputRequestEvent,
 	WebsocketOutputRequestEvent,
+	CronRequestEvent,
+	CorsOptions,
+	StaticServerOptions,
 } from '.';
 
 export interface Register {}
@@ -93,7 +93,7 @@ export type SendOptions = {
 
 export type Middleware<T extends ProcedureType = undefined, R = any> = (event: DynamicRequestEvent<T>) => MaybePromise<R>;
 
-type RateLimitKeyExtractor<T extends RequestEvent | WebsocketInputRequestEvent | DurableRequestEvent> = (event: T) => string;
+type RateLimitKeyExtractor<T extends RequestEvent | WebsocketInputRequestEvent | DurableRequestEvent> = (event: T) => string | void;
 
 export type ProcedureRateLimiters = Record<PickKeyType<Env, RateLimit>, RateLimitKeyExtractor<RequestEvent | DurableRequestEvent>>;
 
@@ -340,3 +340,39 @@ export type CombinedRouters<R extends Router[]> = R extends [infer First, ...inf
 		? First & CombinedRouters<Rest>
 		: First
 	: Router;
+
+export type WSAPI<R extends Router> = {
+	[K in keyof R]: R[K] extends Handler<infer M, infer S, infer H, infer T>
+		? S extends Schema
+			? (payload: SchemaInput<S>) => void
+			: () => void
+		: R[K] extends Router
+			? WSAPI<R[K]>
+			: R[K];
+};
+
+export type DurableObjects = Record<
+	string,
+	{
+		prototype: DurableServer;
+	}
+>;
+
+export type CronHandler = (event: CronRequestEvent) => void;
+export type LocalsOptions = Locals | ((request: Request, env: Env, ctx: ExecutionContext) => MaybePromise<Locals>);
+export type ServerOptions<R extends Router = Router, O extends DurableObjects = DurableObjects> = {
+	router: R;
+	locals?: LocalsOptions;
+	before?: ((event: RequestEvent) => MaybePromise<Response | void>)[];
+	after?: ((response: Response, event: RequestEvent) => MaybePromise<Response | void>)[];
+	onError?: (errorPayload: { error: unknown; event: RequestEvent }) => Response | void;
+	queues?: Queues;
+	cors?: false | CorsOptions | ((event: RequestEvent) => MaybePromise<CorsOptions>);
+	getObjectJurisdictionOrLocationHint?: GetObjectJurisdictionOrLocationHint;
+	objects?: O;
+	static?: StaticServerOptions;
+	rateLimiters?: ProcedureRateLimiters;
+	crons?: Record<string, CronHandler>;
+};
+
+export type CombinedServerOptions = Record<string, ServerOptions>;
