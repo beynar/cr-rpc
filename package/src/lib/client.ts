@@ -1,5 +1,5 @@
 import { type Client, type MaybePromise, type Server, Meta } from './types';
-import { createWebSocketConnection } from './websocket';
+import { createDocumentConnection, createWebSocketConnection } from './websocket';
 import { tryParse } from './utils';
 import { deform, form } from './transform';
 
@@ -9,6 +9,7 @@ export type ClientMeta = {
 	server: string | null;
 	call: boolean;
 	websocket: boolean;
+	doc: boolean;
 };
 
 const defaultObject = () =>
@@ -18,6 +19,7 @@ const defaultObject = () =>
 		server: null,
 		call: false,
 		websocket: false,
+		doc: false,
 	}) satisfies ClientMeta;
 
 export const createRecursiveProxy = (
@@ -35,16 +37,18 @@ export const createRecursiveProxy = (
 			if (typeof key !== 'string') return undefined;
 
 			if (key === 'then') {
+				const isConnect = path[path.length - 1] === 'connect';
+				const isDoc = path[path.length - 1] === 'doc';
 				// mean that it's the last path and the api is effectively called
 				if (!object.call) {
 					object.name = null;
 					object.id = null;
-				} else if (path[path.length - 1] === 'connect' && path.length === 2 && path[0] === object.name) {
-					// If connect is called on the object, it means that we're are trying to connect to a websocket
-					object.websocket = true;
-					object.call = false;
 				}
-				if (object.call || object.websocket) {
+				// If connect is called on the object, it means that we're are trying to connect to a websocket
+				object.websocket = isConnect;
+				object.doc = isDoc;
+
+				if (object.call || isConnect || isDoc) {
 					path[0] = `(${object.name}:${object.id})`;
 				}
 				return (resolve: (value: any) => void, reject: (reason?: any) => void) => {
@@ -74,11 +78,8 @@ export const createRecursiveProxy = (
 	return proxy;
 };
 
-// Should end with the server name if not undefined
-type Endpoint<Server extends string | undefined> = `${string}${Server extends string ? `/${Server}` : ''}`;
 export type ClientOptions = {
 	endpoint: string;
-
 	headers?: HeadersInit | (<I = unknown>({ path, input }: { path: string; input: I }) => MaybePromise<HeadersInit>);
 	fetch?: typeof fetch;
 	onError?: (error: unknown, response: Response) => void;
@@ -104,9 +105,15 @@ export const createClient = <
 		}
 
 		url.pathname = path.join('/');
+
 		if (object.websocket) {
-			return createWebSocketConnection(payload, url);
+			return createWebSocketConnection(url, payload);
 		}
+
+		if (object.doc) {
+			return createDocumentConnection(url, payload, callbackFunction);
+		}
+
 		let method = 'POST';
 		const maybeVerb = path[path.length - 1];
 		const verbs = new Set(['get', 'put', 'delete', 'patch']);

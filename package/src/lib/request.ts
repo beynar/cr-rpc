@@ -4,6 +4,7 @@ export const handleRequest = async (event: DurableRequestEvent | RequestEvent, r
 	if (!router) {
 		throw error('SERVICE_UNAVAILABLE');
 	}
+
 	const handler = getHandler(router, event.path);
 	const request = event.request;
 	const url = event.url;

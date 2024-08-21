@@ -1,4 +1,5 @@
-import { procedure, createServer, createDurableServer, cors, InferApiTypes, stream, createServers } from 'flarepc';
+import { procedure, createServer, createDurableServer, InferApiTypes, createServers } from 'flarepc';
+import { createDurableDoc } from 'flarepc/yjs';
 import { string, optional, object } from 'valibot';
 import { DurableObject } from 'cloudflare:workers';
 
@@ -13,22 +14,22 @@ declare global {
 		MY_RATE_LIMITER: RateLimit;
 	};
 }
-declare module 'flarepc' {
-	interface Register {
-		Env: Env;
-		Tags: 'ADMIN' | 'MENTOR' | 'USER';
-		Locals: {
-			groq: Groq;
-		};
-		Participant: {
-			id: string;
-			name: string;
-		};
-		Queues: {
-			Queue: typeof Queue;
-		};
-	}
-}
+// declare module 'flarepc' {
+// 	interface Register {
+// 		Env: Env;
+// 		Tags: 'ADMIN' | 'MENTOR' | 'USER';
+// 		Locals: {
+// 			groq: Groq;
+// 		};
+// 		Participant: {
+// 			id: string;
+// 			name: string;
+// 		};
+// 		Queues: {
+// 			Queue: typeof Queue;
+// 		};
+// 	}
+// }
 
 const zodSchema = z.object({
 	name: z.string(),
@@ -46,7 +47,10 @@ const router = {
 		}),
 };
 
-export class TestDurable extends createDurableServer({}) {
+// const TestDurable = createDurableDoc({});
+
+// export { TestDurable };
+export class TestDurable extends createDurableDoc() {
 	out = {
 		message: procedure('out')
 			.input(object({ message: optional(string(), 'hello') }))
@@ -82,25 +86,15 @@ export class TestDurable extends createDurableServer({}) {
 		},
 	};
 	router = {
-		test: procedure('durable')
-			.input(object({ id: string() }))
-			.handle(async ({ input, event }) => {
-				// object.setPresence({
-				// 	participant: {
-				// 		id: input.id,
-				// 		name: 'nono',
-				// 	},
-				// });
+		update: procedure('durable').handle(async ({ event }) => {
+			const doc = this.doc;
 
-				return {
-					ok: true,
-				};
-			}),
+			doc.getText('text').insert(0, 'hello world');
+			return {
+				ok: true,
+			};
+		}),
 	};
-
-	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env);
-	}
 }
 
 const Queue = {
@@ -207,5 +201,5 @@ export type PublicServer = typeof servers.infer.public;
 export type AdminServer = typeof servers.infer.admin;
 export type PublicAPI = InferApiTypes<PublicServer>;
 export type AdminAPI = InferApiTypes<AdminServer>;
-// export default servers;
+// export default server;
 export default servers;

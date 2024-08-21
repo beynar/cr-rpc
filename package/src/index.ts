@@ -1,13 +1,11 @@
 import { procedure, createServer, createDurableServer, combineRouters, createServers, Server as SS } from './lib';
 import { string, object, map, BaseSchema, boolean, instance, number, undefined_, null_, date, set } from 'valibot';
 import { createClient } from './lib/client';
-
-const locals = {
-	prod: true,
-};
+import { createDurableDoc, DurableDoc } from './lib/yjs';
+import { DocProvider } from './lib/yjs/client';
 
 declare global {
-	type Locals = typeof locals;
+	type Locals = {};
 
 	interface Env {
 		Queue: Queue;
@@ -199,7 +197,7 @@ const durableRouter = {
 		}),
 };
 
-export class TestDurable extends createDurableServer() {
+export class TestDurable extends createDurableDoc() {
 	out = {
 		message: procedure('out')
 			.input(object({ message: string() }))
@@ -232,7 +230,7 @@ export class TestDurable extends createDurableServer() {
 
 const server = createServer({
 	router,
-	locals,
+	// locals,
 	objects: {
 		TestDurable: TestDurable,
 	},
@@ -272,6 +270,8 @@ const servers = createServers({
 });
 
 export type Servers = typeof servers.infer;
+
+type D = Servers['public']['objects']['TestDurable'];
 export type PublicServer = typeof servers.infer.public;
 export type AdminServer = typeof servers.infer.admin;
 
@@ -282,6 +282,13 @@ const api = createClient<Servers, 'public'>({
 		console.log(error);
 	},
 });
+
+const {ws, provider} = await api.TestDurable('random').doc(DocProvider);
+
+provider.
+
+
+
 const api2 = createClient<Server>({
 	endpoint: 'http://localhost:8080',
 	onError: (error) => {

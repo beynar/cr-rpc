@@ -16,8 +16,10 @@ import {
 	CronRequestEvent,
 	CorsOptions,
 	StaticServerOptions,
+	DocOptions,
 } from '.';
-
+import type { DurableDoc } from './yjs';
+import type { DocProvider } from './yjs/client';
 export interface Register {}
 
 export type Env = Register extends {
@@ -207,6 +209,7 @@ export type Server = {
 };
 
 export type DurableServerDefinition<R extends Router = Router, I extends Router = Router, O extends Router = Router> = {
+	_DOC_?: boolean;
 	router?: R;
 	in?: I;
 	out?: O;
@@ -238,13 +241,29 @@ export type InferApiTypes<S extends Server> = IO<S['router']> & {
 	[K in keyof S['objects']]: IO<Get<S['objects'][K], 'router'>> & InferWS<S['objects'][K]>;
 };
 
-export type InferDurableApi<D extends DurableServer> = DurableServerDefinition<D['router'], D['in'], D['out']>;
+export type InferDurableApi<D extends DurableServer | DurableDoc> = DurableServerDefinition<D['router'], D['in'], D['out']> &
+	D extends DurableDoc
+	? { _DOC_: true }
+	: {};
+
+export type DocProviderConstructor<O extends Router> = new (ws: WebSocketClient, opts?: DocOptions<O>) => DocProvider;
 
 export type Client<S extends Server> = API<S['router']> & {
-	[K in keyof S['objects']]: (
-		id?: 'random' | (string & {}),
-	) => S['objects'][K] extends DurableServerDefinition<infer R, infer I, infer O>
-		? API<R> & { connect: (options: ConnectOptions<O>) => Promise<WebSocketClient<I, O>> }
+	[K in keyof S['objects']]: (id?: 'random' | (string & {})) => S['objects'][K] extends DurableServerDefinition<infer R, infer I, infer O>
+		? API<R> & {
+				connect: (options?: ConnectOptions<O>) => Promise<WebSocketClient<I, O>>;
+			} & (S['objects'][K] extends { _DOC_: true }
+					? {
+							doc: (
+								provider: DocProviderConstructor<O>,
+								options?: DocOptions<O>,
+							) => Promise<{
+								doc: DocProvider['doc'];
+								awareness: DocProvider['awareness'];
+								client: WebSocketClient<I, O>;
+							}>;
+						}
+					: never)
 		: never;
 };
 
@@ -354,7 +373,7 @@ export type WSAPI<R extends Router> = {
 export type DurableObjects = Record<
 	string,
 	{
-		prototype: DurableServer;
+		prototype: DurableServer | DurableDoc;
 	}
 >;
 

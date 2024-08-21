@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-	entry: ['src/lib/index.ts', 'src/lib/client.ts'],
+	entry: ['src/lib/index.ts', 'src/lib/client.ts', 'src/lib/yjs/index.ts', 'src/lib/yjs/client.ts'],
 	splitting: false,
 	skipNodeModulesBundle: false,
 	dts: true,

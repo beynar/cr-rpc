@@ -16,7 +16,11 @@
 	},
 	"dependencies": {
 		"example-worker": "workspace:*",
-		"flarepc": "workspace:*"
+		"flarepc": "workspace:*",
+		"i": "^0.3.7",
+		"npm": "^10.8.2",
+		"y-websocket": "^2.0.4",
+		"yjs": "^13.6.18"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.28.1",

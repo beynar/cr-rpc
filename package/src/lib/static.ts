@@ -97,7 +97,6 @@ export class StaticHandler {
 
 	serve = async (request: Request, key: string): Promise<Response | void> => {
 		const url = new URL(request.url);
-		console.log({ key });
 		const manifest = await this.getManifest();
 
 		let mimeType = lookup(key) || 'application/octet-stream';

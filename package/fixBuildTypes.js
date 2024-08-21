@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 
-const files = fs.readdirSync('./dist');
+const files = fs.readdirSync('./dist').concat(fs.readdirSync('./dist/yjs').map((file) => `yjs/${file}`));
 
 const typesFiles = files.filter((file) => file.includes('.d.ts') || file.includes('.mts'));
 typesFiles.forEach((file) => {
@@ -12,7 +12,18 @@ typesFiles.forEach((file) => {
 	string = string.replaceAll('import {', 'import type {');
 	string = string.replaceAll('Queue<unknown>', 'Queue');
 
-	["import '@cloudflare/workers-types';", "import 'valibot';", "import 'zod';", "import 'arktype';", "import 'cookie';"].forEach((line) => {
+	[
+		"import '@cloudflare/workers-types';",
+		"import 'valibot';",
+		"import 'zod';",
+		"import 'arktype';",
+		"import 'cookie';",
+		"import 'yjs';",
+		"import 'cloudflare:workers';",
+		"import 'lib0/encoding';",
+		"import 'y-protocols/awareness';",
+		"import 'lib0/observable';",
+	].forEach((line) => {
 		string = string.replace(line, '');
 	});
 

@@ -21,6 +21,6 @@ export const publicApi = createClient<Servers, 'public'>({
 // 	onError: (error) => {
 // 		console.log(error);
 // 	}
-// });
+// };
 
 export { type API };

@@ -46,19 +46,22 @@ export const deserializeAttachment = (ws: WebSocket): Session => {
 	return parse(ws.deserializeAttachment()) as Session;
 };
 
-type ArrayBufferMessageHandler = (payload: { ws: WebSocket; message: ArrayBuffer; object: DurableServer }) => MaybePromise<void>;
+type ArrayBufferMessageHandler = (ws: WebSocket, message: ArrayBuffer) => MaybePromise<void>;
 
 export class DurableServer extends DurableObject<any> {
-	public ctx: DurableObjectState;
-	public env: Env;
 	opts?: DurableOptions;
 	// @ts-expect-error this will be set in the constructor by blocking concurrency if needed
 	locals: Locals;
-	router: Router = {} as Router;
-	in: Router = {} as Router;
-	out: Router = {} as Router;
+	// @ts-ignore
+	router: Router;
+	// @ts-ignore
+	in: Router;
+	// @ts-ignore
+	out: Router;
 	meta = {} as DurableMeta;
 	onArrayBufferMessage?: ArrayBufferMessageHandler;
+	onConnectionOpen?: (ws: WebSocket, session: Session) => void;
+	onConnectionClose?: (ws: WebSocket, session: Session) => void;
 
 	setPresence = async ({ participant, sessionData }: { participant: Participant; sessionData?: SessionData }) => {
 		const sessions = await this.getSessions();
@@ -75,6 +78,7 @@ export class DurableServer extends DurableObject<any> {
 			return newSession;
 		}
 	};
+
 	event = <D extends {}>(
 		rest: D,
 	): {
@@ -105,7 +109,10 @@ export class DurableServer extends DurableObject<any> {
 		return event;
 	};
 
-	constructor(ctx: DurableObjectState, env: Env) {
+	constructor(
+		public ctx: DurableObjectState,
+		public env: Env,
+	) {
 		super(ctx, env);
 		const locals = this.opts?.locals;
 		ctx.blockConcurrencyWhile(async () => {
@@ -211,7 +218,7 @@ export class DurableServer extends DurableObject<any> {
 
 			this.ctx.acceptWebSocket(server, tags);
 			this.sendPresence();
-
+			this.onConnectionOpen?.(server, session);
 			return withCookies(
 				new Response(null, {
 					status: 101,
@@ -227,7 +234,7 @@ export class DurableServer extends DurableObject<any> {
 
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
 		if (typeof message !== 'string') {
-			return this.onArrayBufferMessage?.({ ws, message, object: this });
+			return this.onArrayBufferMessage?.(ws, message);
 		}
 
 		const session = deserializeAttachment(ws);

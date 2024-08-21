@@ -27,16 +27,21 @@ import {
 	CombinedServerOptions,
 } from '.';
 
+const isHandler = (handler: any): handler is Handler<any, any, any, any> => {
+	return 'call' in handler;
+};
+
 export const getHandler = (router: Router, path: string[]) => {
 	type H = Router | Handler<any, any, any, any> | undefined;
 	let handler: H = router;
 	path.forEach((segment) => {
 		handler = handler?.[segment as keyof typeof handler] ? (handler?.[segment as keyof typeof handler] as H) : undefined;
 	});
-	if (!handler || !(handler instanceof Handler)) {
+
+	if (!handler || !isHandler(handler)) {
 		throw error('NOT_FOUND', 'handler not found');
 	}
-	return handler as Handler<any, any, any, any>;
+	return handler;
 };
 
 const getDurableServer = async <O extends DurableObjects>({
@@ -74,7 +79,7 @@ const executeFetch = async (
 	const stub = await getDurableServer({ event, objects: opts.objects });
 	const isWebSocketConnect = request.headers.get('Upgrade') === 'websocket';
 
-	// Cors are enabled by default with very permissive options to smoothen the usage and allows cookies to be used.
+	// Cors are enabled by default with very permissive options to smoothen local development the usage and allows cookies to be used.
 	const corsOptions = typeof opts.cors === 'function' ? await opts.cors(event) : opts.cors;
 	const { preflight, corsify } =
 		corsOptions === false
@@ -106,7 +111,6 @@ const executeFetch = async (
 			response = await handleRequest(event, opts.router);
 		}
 	} catch (error) {
-		console.log(error);
 		opts.onError?.({ error, event });
 		response = handleError(error);
 	}
